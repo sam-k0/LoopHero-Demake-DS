@@ -1,6 +1,13 @@
--- Loop Hero reimplementation for Nintendo DS Lua
-Image = require("Image")
+-- Loop Hero reimplementation for Nintendo DS Lua (microLua DS)
+-- Original game by Four Quarters 
+-- This is a reimplementation of the game mechanics and features and does not use any code from the original game.
+-- Assets are taken from the original game, some are modified to fit the limits of the Nintendo DS.
 
+-- This (the code) is open source, freely editable and free to use without warranty.
+-- Code written by sam-k0
+
+Image = require("Image")
+Debug.ON()
 --= Global Variables ==========--
 tmr = Timer.new()                   -- Create the timer
 tmr:start()                          -- Start the timer
@@ -8,6 +15,7 @@ objList = {} -- list of objects
 sprList = {} -- list of sprites
 TARGET_FPS = 30
 SEED = 123456789 -- Seed for random number generator
+
 
 --= GAME states ==========--
 GS_PLAYING = 0
