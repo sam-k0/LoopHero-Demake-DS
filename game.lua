@@ -5,7 +5,7 @@ Image = require("Image")
 tmr = Timer.new()                   -- Create the timer
 tmr:start()                          -- Start the timer
 objList = {} -- list of objects
-sprList = {} -- list of sprites, added onto by createSprite
+sprList = {} -- list of sprites
 TARGET_FPS = 30
 DELTA_TIME = 1/TARGET_FPS
 SEED = 123456789 -- Seed for random number generator
@@ -28,6 +28,8 @@ function random()
     -- Constants from Numerical Recipes LCG
     local seed = SEED
     seed = (1103515245 * seed + 12345) % 2147483648
+    -- Update the global seed
+    SEED = seed
     return (seed % 10000) / 10000  -- returns a float between 0.0 and 1.0
 end
 
@@ -45,6 +47,14 @@ end
 
 function floor(x)
     return x - (x % 1)
+end
+
+function copyShallow(orig)
+    local copy = {}
+    for k, v in pairs(orig) do
+        copy[k] = v
+    end
+    return copy
 end
 
 
@@ -170,10 +180,39 @@ function drawSpriteAnimation(scrn, anim, x, y) -- draws the current frame of the
     screen.blit(scrn, x, y, anim.image, sx, sy, anim.frameWidth, anim.frameHeight)
 end
 
+--= Enemy stats ==========--
+
+E_GOBLIN = {
+    name = "Goblin",
+    health = 10,
+    attack = 2,
+    defense = 1,
+    speed = 1,
+    reward = 5, -- reward for defeating this enemy
+    spr = spr_goblin
+}
+
+
+--= Tile update functions ==========--
+function updateRoadTile(tile) -- passing the tile for access to its properties
+    -- spawn an enemy with a chance
+    tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
+    if tile.data.spawnTimer <= 0 then
+        tile.data.spawnTimer = randomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
+        if random() < 0.1 then --spawn enemy
+            if #tile.data.enemies == tile.data.maxEnemies then
+                return -- don't spawn if max enemies reached
+            end
+            local enemy = copyShallow(E_GOBLIN) -- create a copy of the goblin stats prototype
+            table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
+        end
+    end
+end
+
+
 
 --= Create objects ==========--
 function createSprite(img,fw, fh, fc, fd, scrn) -- creates table with sprite properties
-    table.insert(sprList,img)
     return {
         image = img,
         frameWidth = fw,
@@ -198,8 +237,12 @@ function createObject(sprAnim,varTable,initFunc, updateFunc, drawFunc ) -- objec
 end
 
 -- create tilegrid manager
-spr_tile_empty = Image.load("tile_empty.png", VRAM)
-spr_tile_road = Image.load("tile_road.png", VRAM)
+spr_tile_empty = Image.load("tile_empty.png", RAM)
+table.insert(sprList, spr_tile_empty) -- add to sprite list
+spr_tile_road = Image.load("tile_road.png", RAM)
+table.insert(sprList, spr_tile_road) -- add to sprite list
+spr_tile_road_enemies = Image.load("tile_road_enemies.png", RAM) -- tile with enemies on it
+table.insert(sprList, spr_tile_road_enemies) -- add to sprite list
 
 obj_tilegrid = createObject(
     nil, -- no sprite
@@ -217,6 +260,7 @@ obj_tilegrid = createObject(
         -- tile sprites
         obj_tilegrid.vars.tileSprites["empty"] = createSprite(spr_tile_empty, 16, 16, 1, 10, SCREEN_DOWN)
         obj_tilegrid.vars.tileSprites["road"] = createSprite(spr_tile_road, 16, 16, 1, 10, SCREEN_DOWN)
+        obj_tilegrid.vars.tileSprites["road_enemies"] = createSprite(spr_tile_road_enemies, 16, 16, 1, 10, SCREEN_DOWN)
         -- grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             obj_tilegrid.vars.tileGrid[j] = {}
@@ -224,7 +268,14 @@ obj_tilegrid = createObject(
                 obj_tilegrid.vars.tileGrid[j][i] = {
                     type = "empty",   -- could be "path", "grass", "road", etc.
                     occupied = false, -- is there a game object on this tile?
-                    data = {}         -- custom data (e.g., spawn timer, event flags)
+                    data = {
+                        updateFunc = nil, -- function to call for updates (e.g., spawn timer)
+                        enemies = {}, -- list of enemies on this tile
+                        spawnTimer = 0, -- timer for spawning enemies or events
+                        minSpawnTimer = 120,
+                        maxSpawnTimer = 300, -- range for random spawn timer
+                        maxEnemies = 3 -- maximum number of enemies that can spawn on this tile
+                    }         -- custom data (e.g., spawn timer, event flags)
                 }
             end
         end
@@ -236,12 +287,23 @@ obj_tilegrid = createObject(
             if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then
                 obj_tilegrid.vars.tileGrid[y][x].type = "road"
                 table.insert(obj_tilegrid.vars.roadPath, {x = x, y = y})
+                obj_tilegrid.vars.tileGrid[y][x].data.updateFunc = updateRoadTile -- assign the update function for road tiles
+                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = randomRange(minSpawnTimer, maxSpawnTimer) -- set a random spawn timer for the road tile
             end
         end
 
     end, -- end init function
     function() -- update function
         -- nothing to do here
+        for j = 1, obj_tilegrid.vars.gridHeight do
+            for i = 1, obj_tilegrid.vars.gridWidth do
+                local tile = obj_tilegrid.vars.tileGrid[j][i]
+                if tile.type == "road" and tile.data.updateFunc then
+                    -- call the update function for the road tile
+                    tile.data.updateFunc(tile) -- passing the tile for access to its properties
+                end
+            end
+        end
     end,
     function() -- draw function
         -- iterate over the grid and draw each tile starting at anchor point x,y
@@ -253,7 +315,11 @@ obj_tilegrid = createObject(
                 if tile.type == "empty" then
                     drawSpriteAnimation(SCREEN_DOWN, obj_tilegrid.vars.tileSprites["empty"], x, y)
                 elseif tile.type == "road" then
-                    drawSpriteAnimation(SCREEN_DOWN, obj_tilegrid.vars.tileSprites["road"], x, y)
+                    if #tile.data.enemies > 0 then -- if there are enemies on this tile
+                        drawSpriteAnimation(SCREEN_DOWN, obj_tilegrid.vars.tileSprites["road_enemies"], x, y)
+                    else
+                        drawSpriteAnimation(SCREEN_DOWN, obj_tilegrid.vars.tileSprites["road"], x, y)
+                    end
                 end
             end
         end
@@ -265,7 +331,8 @@ obj_tilegrid = createObject(
 obj_tilegrid.init()
 
 -- create hero
-spr_hero = Image.load("hero.png", VRAM)
+spr_hero = Image.load("hero.png", RAM)
+table.insert(sprList, spr_hero) -- add to sprite list
 obj_hero = createObject(
     createSprite(spr_hero, 16, 16, 2, 10, SCREEN_DOWN),
     {
@@ -333,6 +400,7 @@ function drawGameObjects() -- calls draw function for all objects
         obj.draw()
     end
 end
+
 
 
 --= Main Loop ==========--
