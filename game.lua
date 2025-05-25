@@ -7,7 +7,6 @@ tmr:start()                          -- Start the timer
 objList = {} -- list of objects
 sprList = {} -- list of sprites
 TARGET_FPS = 30
-DELTA_TIME = 1/TARGET_FPS
 SEED = 123456789 -- Seed for random number generator
 
 --= GAME states ==========--
@@ -53,7 +52,11 @@ function randomInt(a, b)
     return a + floor(random() * (b - a + 1))
 end
 
-
+function clamp(val, min, max)
+    if val < min then return min end
+    if val > max then return max end
+    return val
+end
 
 function copyShallow(orig)
     local copy = {}
@@ -166,21 +169,36 @@ end
 
 
 --= Enemy stats ==========--
-
+spr_enemy_goblin = Image.load("goblin.png", VRAM) -- load goblin image
+table.insert(sprList, spr_enemy_goblin) -- add to sprite list
 E_GOBLIN = {
     name = "Goblin",
-    health = 10,
-    attack = 2,
+    health = 15,
+    attack = 3,
     defense = 1,
     speed = 1,
     reward = 5, -- reward for defeating this enemy
-    spr = spr_goblin
+    spr = spr_enemy_goblin,
+    attackCooldown = 20, -- frames to wait before attacking again
+    ATTACKCOOLDOWN = 20, -- frames to wait before attacking again
 }
 
+spr_enemy_slime = Image.load("slime.png", VRAM) -- load slime sprite
+table.insert(sprList, spr_enemy_slime) -- add to sprite list
+E_SLIME = {
+    name = "Slime",
+    health = 8,
+    attack = 3,
+    defense = 0,
+    speed = 1,
+    reward = 3, -- reward for defeating this enemy
+    spr = spr_enemy_slime,
+    attackCooldown = 35, -- frames to wait before attacking again
+    ATTACKCOOLDOWN = 35, -- frames to wait before attacking again
+}
 
 --= Tile update functions ==========--
 function updateRoadTile(tile) -- passing the tile for access to its properties
-    
     -- spawn an enemy with a chance
     tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
     if tile.data.spawnTimer <= 0 then
@@ -189,7 +207,7 @@ function updateRoadTile(tile) -- passing the tile for access to its properties
             if #tile.data.enemies == tile.data.maxEnemies then
                 return false -- don't spawn if max enemies reached
             end
-            local enemy = copyShallow(E_GOBLIN) -- create a copy of the goblin stats prototype
+            local enemy = copyShallow(randomChoice({E_GOBLIN, E_SLIME})) -- create a copy of the goblin stats prototype
             table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
             return true -- indicate that the tile was updated
         end
@@ -287,6 +305,10 @@ obj_tilegrid = createObject(
 
     end, -- end init function
     function() -- update function
+        if GAMESTATE.PAUSED == GS_PAUSED or GAMESTATE.HEROSTATE == HS_FIGHTING then
+            return -- do not update if paused or in a fight state
+        end
+
         -- update the tile grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             for i = 1, obj_tilegrid.vars.gridWidth do
@@ -362,6 +384,18 @@ obj_hero = createObject(
         WALKING_COOLDOWN = 10, -- frames to wait before moving again
         walkingCooldown = 10, -- frames to wait before moving again
         walkingSpeed = 1, -- pixels per frame
+        -- Battle stats
+        health = 100,
+        attack = 5,
+        defense = 2,
+        ATTACKCOOLDOWN = 45, -- frames to wait before attacking again
+        attackCooldown = 45, -- frames to wait before attacking again
+        getTileEnemies = function() -- function to get enemies on the current tile
+            local currentX = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].x
+            local currentY = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].y
+            return obj_tilegrid.vars.tileGrid[currentY][currentX].data.enemies -- return enemies on the current tile
+        end,
+
     },
     function() -- init
         -- nothing to do here
@@ -383,14 +417,76 @@ obj_hero = createObject(
                     obj_hero.vars.x = (nextTile.x * obj_tilegrid.vars.tileSize)  -- center the hero on the tile
                     obj_hero.vars.y = (nextTile.y * obj_tilegrid.vars.tileSize) -16 -- center the hero on the tile
                     obj_hero.vars.walkingCooldown = obj_hero.vars.WALKING_COOLDOWN -- reset cooldown
+                    -- does it have enemies?
+                    -- first resolve the actual tile from the position
+                    local ftile = obj_tilegrid.vars.tileGrid[nextTile.y][nextTile.x]
+                    if ftile.type == "road" and #ftile.data.enemies > 0 then
+                        -- start fighting state, reset attack cooldown each combat
+                        GAMESTATE.HEROSTATE = HS_FIGHTING
+                        obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
+                    end
                 end
             end
 
+        elseif GAMESTATE.HEROSTATE == HS_FIGHTING then -- fight the enemies
+            local enemies = obj_hero.vars.getTileEnemies() -- get enemies on the current tile
+            if #enemies == 0 then
+                -- no enemies left, go back to walking state
+                GAMESTATE.HEROSTATE = HS_WALKING
+                obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update as no enemies left
+            else
+                -- All enemies have an attack cooldown that decreases over time
+                for i, enemy in ipairs(enemies) do
+                    enemy.attackCooldown = enemy.attackCooldown - 1 -- decrement attack cooldown
+                    if enemy.attackCooldown <= 0 then
+                        -- attack the hero
+                        obj_hero.vars.health = obj_hero.vars.health - clamp(enemy.attack - obj_hero.vars.defense, 0, enemy.attack - obj_hero.vars.defense+1) -- calculate damage
+                        if obj_hero.vars.health <= 0 then
+                            -- hero defeated, game over state
+                            GAMESTATE.PAUSED = GS_GAMEOVER
+                        end
+                        enemy.attackCooldown = enemy.ATTACKCOOLDOWN -- reset attack cooldown
+                    end
+                end
+
+                -- Hero attacks enemies
+                obj_hero.vars.attackCooldown = obj_hero.vars.attackCooldown - 1 -- decrement attack cooldown
+                -- the hero will always focus the first enemy in the list
+                if obj_hero.vars.attackCooldown <= 0 and #enemies > 0 then
+                    
+                    obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
+                    local enemy = enemies[1] -- focus the first enemy
+                    enemy.health = enemy.health - clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
+                    if enemy.health <= 0 then
+                        -- enemy defeated, remove from tile
+                        table.remove(enemies, 1) -- remove the first enemy
+                       
+                    end
+                end
+
+            end 
         end
     end,
     function() -- draw function
         --obj_hero.sprite:drawFrame(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 0) -- draw the hero sprite at the current position
         obj_hero.sprite:playAnimation(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 1) -- draw the hero sprite at the current position
+        screen.print(SCREEN_UP, 64, 180, "Hero HP: "..obj_hero.vars.health)
+
+        if GAMESTATE.HEROSTATE == HS_FIGHTING then
+            -- Draw fighting UI or effects here
+            screen.print(SCREEN_UP, 64,64,"Fighting enemies!")
+            local currentX = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].x
+            local currentY = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].y
+            local currentTile = obj_tilegrid.vars.tileGrid[currentY][currentX]
+
+            for i, _enemy in ipairs(currentTile.data.enemies) do
+                screen.print(SCREEN_UP, 64, 75 + i * 8, "Enemy: ".._enemy.name.." HP: ".._enemy.health)
+                -- Draw enemy sprite
+                screen.blit(SCREEN_UP, 32, 75 + i * 8, _enemy.spr, 0,0,16,16) -- draw enemy sprite at a fixed position
+            end
+        end
+        
+
     end
 )
 
@@ -422,14 +518,7 @@ end
 
 
 --= Main Loop ==========--
-tmr:start()
-
 while not Keys.newPress.Start do
-
-    DELTA_TIME = tmr:getTime() -- get time since last frame
-    tmr:reset() -- reset timer
-
-
     -- Update controls
     Controls.read()
 
@@ -440,14 +529,14 @@ while not Keys.newPress.Start do
 
     screen.print(SCREEN_UP, 0, 8, "Press START to quit")
     screen.print(SCREEN_UP, 0, 16, "FPS: "..NB_FPS)
-    screen.print(SCREEN_UP, 0, 24, "Delta Time: "..DELTA_TIME)
-
     render()
 end
 -- Free resources
 for i,s in ipairs(sprList) do -- this should theoretically free all images 
-    if s.img then
-        Image.free(s.img)
+    -- check if it is an Image or a Sprite
+    if s.destroy then
+        s:destroy() -- destroy sprite or image
+    else
+        Image.destroy(s) -- destroy image
     end
-    s.img = nil
 end
