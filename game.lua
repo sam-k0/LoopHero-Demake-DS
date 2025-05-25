@@ -9,6 +9,7 @@ sprList = {} -- list of sprites
 TARGET_FPS = 30
 DELTA_TIME = 1/TARGET_FPS
 SEED = 123456789 -- Seed for random number generator
+
 --= GAME states ==========--
 GS_PLAYING = 0
 GS_PAUSED = 1
@@ -33,8 +34,15 @@ function random()
     return (seed % 10000) / 10000  -- returns a float between 0.0 and 1.0
 end
 
+function floor(x)
+    return x - (x % 1)
+end
+
 function randomRange(min, max)
-    return math.floor(random() * (max - min + 1) + min)
+    if max == nil then
+        return min
+    end
+    return floor(random() * (max - min + 1) + min)
 end
 
 function randomChoice(t)
@@ -42,12 +50,10 @@ function randomChoice(t)
 end
 
 function randomInt(a, b)
-    return a + math.floor(random() * (b - a + 1))
+    return a + floor(random() * (b - a + 1))
 end
 
-function floor(x)
-    return x - (x % 1)
-end
+
 
 function copyShallow(orig)
     local copy = {}
@@ -100,7 +106,7 @@ function randomPath()
     end
 
     -- Pick a random starting edge tile
-    local start = randomChoice(edgeTiles)
+    local start = edgeTiles[1]--randomChoice(edgeTiles)
     local x, y = start.x, start.y
     table.insert(path, {x = x, y = y})
     mark(x, y)
@@ -159,27 +165,6 @@ function randomPath()
 end
 
 
-
-
---= Animation Functions ==========--
-
-function updateSpriteAnimation(anim) -- updates the animation frame
-    anim.frameCounter = anim.frameCounter + 1
-    if anim.frameCounter >= anim.frameDelay then
-        anim.currentFrame = anim.currentFrame + 1
-        if anim.currentFrame > anim.frameCount then
-            anim.currentFrame = 1
-        end
-        anim.frameCounter = 0
-    end
-end
-
-function drawSpriteAnimation(scrn, anim, x, y) -- draws the current frame of the animation
-    local sx = (anim.currentFrame - 1) * anim.frameWidth
-    local sy = 0
-    screen.blit(scrn, x, y, anim.image, sx, sy, anim.frameWidth, anim.frameHeight)
-end
-
 --= Enemy stats ==========--
 
 E_GOBLIN = {
@@ -195,16 +180,18 @@ E_GOBLIN = {
 
 --= Tile update functions ==========--
 function updateRoadTile(tile) -- passing the tile for access to its properties
+    
     -- spawn an enemy with a chance
     tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
     if tile.data.spawnTimer <= 0 then
         tile.data.spawnTimer = randomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
         if random() < 0.1 then --spawn enemy
             if #tile.data.enemies == tile.data.maxEnemies then
-                return -- don't spawn if max enemies reached
+                return false -- don't spawn if max enemies reached
             end
             local enemy = copyShallow(E_GOBLIN) -- create a copy of the goblin stats prototype
             table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
+            return true -- indicate that the tile was updated
         end
     end
 end
@@ -212,19 +199,6 @@ end
 
 
 --= Create objects ==========--
-function createSprite(img,fw, fh, fc, fd, scrn) -- creates table with sprite properties
-    return {
-        image = img,
-        frameWidth = fw,
-        frameHeight = fh,
-        frameCount = fc,
-        currentFrame = 1,
-        frameDelay = fd, -- frames to wait before switching
-        frameCounter = 0,
-        scrn = SCREEN_DOWN
-    }
-end
-
 
 function createObject(sprAnim,varTable,initFunc, updateFunc, drawFunc ) -- object is basically a sprite with an update function to take care of vars
     return {
@@ -237,12 +211,20 @@ function createObject(sprAnim,varTable,initFunc, updateFunc, drawFunc ) -- objec
 end
 
 -- create tilegrid manager
-spr_tile_empty = Image.load("tile_empty.png", RAM)
+spr_tile_empty = Image.load("tile_empty.png", VRAM) -- load empty tile sprite
+--spr_tile_empty = Sprite.new("tile_empty.png",16,16, VRAM)
 table.insert(sprList, spr_tile_empty) -- add to sprite list
-spr_tile_road = Image.load("tile_road.png", RAM)
+--spr_tile_empty:addAnimation({0},300) -- add animation for empty tile
+
+spr_tile_road = Image.load("tile_road.png", VRAM) -- load road tile sprite
+--spr_tile_road = Sprite.new("tile_road.png",16,16, VRAM)
 table.insert(sprList, spr_tile_road) -- add to sprite list
-spr_tile_road_enemies = Image.load("tile_road_enemies.png", RAM) -- tile with enemies on it
+--spr_tile_road:addAnimation({0},300) -- add animation for road tile
+
+spr_tile_road_enemies = Image.load("tile_road_enemies.png", VRAM) -- load road tile with enemies sprite
+--spr_tile_road_enemies = Sprite.new("tile_road_enemies.png",16,16, VRAM) -- tile with enemies on it
 table.insert(sprList, spr_tile_road_enemies) -- add to sprite list
+--spr_tile_road_enemies:addAnimation({0},300) -- add animation for road tile with enemies
 
 obj_tilegrid = createObject(
     nil, -- no sprite
@@ -254,13 +236,22 @@ obj_tilegrid = createObject(
         gridHeight=8,
         tileGrid = {},
         tileSprites ={},
-        roadPath = {} -- this will hold the road path tiles in a sequence
+        tileCanvas = Canvas.new(), -- drawing onto canvas for performance
+        canvasUpdate = true, -- flag to update canvas when needed
+        roadPath = {}, -- this will hold the road path tiles in a sequence
+        cardPlaceToGridcoords = function(sx, sy)
+            -- calculate grid's left edge as in the draw function
+            local grid_left = 256 / 2 - obj_tilegrid.vars.tileSize * obj_tilegrid.vars.gridWidth / 2
+            local x = floor((sx - grid_left) / obj_tilegrid.vars.tileSize) + 1
+            local y = floor((sy - obj_tilegrid.vars.y) / obj_tilegrid.vars.tileSize) + 1
+            return x, y
+        end
     },
     function() -- init grid to empty
         -- tile sprites
-        obj_tilegrid.vars.tileSprites["empty"] = createSprite(spr_tile_empty, 16, 16, 1, 10, SCREEN_DOWN)
-        obj_tilegrid.vars.tileSprites["road"] = createSprite(spr_tile_road, 16, 16, 1, 10, SCREEN_DOWN)
-        obj_tilegrid.vars.tileSprites["road_enemies"] = createSprite(spr_tile_road_enemies, 16, 16, 1, 10, SCREEN_DOWN)
+        obj_tilegrid.vars.tileSprites["empty"] = spr_tile_empty
+        obj_tilegrid.vars.tileSprites["road"] = spr_tile_road
+        obj_tilegrid.vars.tileSprites["road_enemies"] = spr_tile_road_enemies
         -- grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             obj_tilegrid.vars.tileGrid[j] = {}
@@ -274,7 +265,8 @@ obj_tilegrid = createObject(
                         spawnTimer = 0, -- timer for spawning enemies or events
                         minSpawnTimer = 120,
                         maxSpawnTimer = 300, -- range for random spawn timer
-                        maxEnemies = 3 -- maximum number of enemies that can spawn on this tile
+                        maxEnemies = 3, -- maximum number of enemies that can spawn on this tile
+                        spr = obj_tilegrid.vars.tileSprites["empty"], -- sprite to draw for this tile
                     }         -- custom data (e.g., spawn timer, event flags)
                 }
             end
@@ -284,46 +276,72 @@ obj_tilegrid = createObject(
         for _, pos in ipairs(generatedPath) do
             local x = pos.x
             local y = pos.y
-            if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then
+            if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- assign road tile changes
                 obj_tilegrid.vars.tileGrid[y][x].type = "road"
                 table.insert(obj_tilegrid.vars.roadPath, {x = x, y = y})
                 obj_tilegrid.vars.tileGrid[y][x].data.updateFunc = updateRoadTile -- assign the update function for road tiles
-                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = randomRange(minSpawnTimer, maxSpawnTimer) -- set a random spawn timer for the road tile
+                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = randomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
+                obj_tilegrid.vars.tileGrid[y][x].data.spr = obj_tilegrid.vars.tileSprites["road"] -- set the sprite for the road tile
             end
         end
 
     end, -- end init function
     function() -- update function
-        -- nothing to do here
+        -- update the tile grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             for i = 1, obj_tilegrid.vars.gridWidth do
                 local tile = obj_tilegrid.vars.tileGrid[j][i]
-                if tile.type == "road" and tile.data.updateFunc then
+                if tile.type == "road" then
                     -- call the update function for the road tile
-                    tile.data.updateFunc(tile) -- passing the tile for access to its properties
-                end
-            end
-        end
-    end,
-    function() -- draw function
-        -- iterate over the grid and draw each tile starting at anchor point x,y
-        for j = 1, obj_tilegrid.vars.gridHeight do
-            for i = 1, obj_tilegrid.vars.gridWidth do
-                local tile = obj_tilegrid.vars.tileGrid[j][i]
-                local x = 256 / 2 - 16 * obj_tilegrid.vars.gridWidth / 2 + (i - 1) * obj_tilegrid.vars.tileSize
-                local y = obj_tilegrid.vars.y + (j - 1) * obj_tilegrid.vars.tileSize
-                if tile.type == "empty" then
-                    drawSpriteAnimation(SCREEN_DOWN, obj_tilegrid.vars.tileSprites["empty"], x, y)
-                elseif tile.type == "road" then
-                    if #tile.data.enemies > 0 then -- if there are enemies on this tile
-                        drawSpriteAnimation(SCREEN_DOWN, obj_tilegrid.vars.tileSprites["road_enemies"], x, y)
-                    else
-                        drawSpriteAnimation(SCREEN_DOWN, obj_tilegrid.vars.tileSprites["road"], x, y)
+                    local shouldUpdate=tile.data.updateFunc(tile) -- passing the tile for access to its properties
+                    if shouldUpdate then
+                        obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update if any tile was updated
                     end
                 end
             end
         end
+        -- If stylus is pressed, convert screen coordinates to grid coordinates
+        if Stylus.held then
+            local x, y = obj_tilegrid.vars.cardPlaceToGridcoords(Stylus.X, Stylus.Y) -- convert screen coordinates to grid coordinates
+            if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- check bounds
+                local tile = obj_tilegrid.vars.tileGrid[y][x]
+                if not tile.occupied then -- if tile is not occupied
+                    tile.type = "road" -- change tile type to road
+                    tile.data.updateFunc = updateRoadTile -- assign the update function for road tiles
+                    tile.data.spawnTimer = randomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- set initial spawn timer
+                    tile.data.spr = obj_tilegrid.vars.tileSprites["road"] -- set the sprite for the road tile
+                    
+                    obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update
+                end
+            end
+        end
 
+    end,
+    function() -- draw function
+        if obj_tilegrid.vars.canvasUpdate then
+            -- destroy old canvas
+            Canvas.destroy(obj_tilegrid.vars.tileCanvas) -- destroy old canvas
+            obj_tilegrid.vars.tileCanvas = Canvas.new() -- create a new canvas
+            -- iterate over the grid and draw each tile onto the canvas
+            for j = 1, obj_tilegrid.vars.gridHeight do
+                for i = 1, obj_tilegrid.vars.gridWidth do
+                    local tile = obj_tilegrid.vars.tileGrid[j][i]
+                    local x = 256 / 2 - 16 * obj_tilegrid.vars.gridWidth / 2 + (i - 1) * obj_tilegrid.vars.tileSize
+                    local y = obj_tilegrid.vars.y + (j - 1) * obj_tilegrid.vars.tileSize
+                    -- draw tile sprite onto canvas
+                    local cobj = Canvas.newImage(x,y,tile.data.spr) -- canvas object for this tile, default to the assigned sprite
+                    
+                    -- if  it is a road tile with enemies, change the sprite
+                    if tile.type == "road" and #tile.data.enemies > 0 then
+                       cobj = Canvas.newImage(x,y,obj_tilegrid.vars.tileSprites["road_enemies"]) -- use road with enemies sprite
+                    end
+                    Canvas.add(obj_tilegrid.vars.tileCanvas, cobj) -- add to canvas
+                end
+            end
+            obj_tilegrid.vars.canvasUpdate = false -- reset canvas update flag
+            
+        end 
+        Canvas.draw(SCREEN_DOWN, obj_tilegrid.vars.tileCanvas, obj_tilegrid.vars.x, obj_tilegrid.vars.y)   
     end
 )
 
@@ -331,10 +349,11 @@ obj_tilegrid = createObject(
 obj_tilegrid.init()
 
 -- create hero
-spr_hero = Image.load("hero.png", RAM)
+spr_hero = Sprite.new("hero.png",16,16, VRAM)
+spr_hero:addAnimation({0,1},300)
 table.insert(sprList, spr_hero) -- add to sprite list
 obj_hero = createObject(
-    createSprite(spr_hero, 16, 16, 2, 10, SCREEN_DOWN),
+    spr_hero,
     {
         currentRoadPathIndex = 1, -- index of the current road path tile
         startingTile = obj_tilegrid.vars.roadPath[1], -- starting tile for the hero
@@ -343,14 +362,12 @@ obj_hero = createObject(
         WALKING_COOLDOWN = 10, -- frames to wait before moving again
         walkingCooldown = 10, -- frames to wait before moving again
         walkingSpeed = 1, -- pixels per frame
-        
     },
     function() -- init
         -- nothing to do here
     end, 
     function() -- update function
         if GAMESTATE.HEROSTATE == HS_WALKING then -- follow the path
-            updateSpriteAnimation(obj_hero.sprite) -- animate
 
             -- move hero along the road path
             obj_hero.vars.walkingCooldown = obj_hero.vars.walkingCooldown - obj_hero.vars.walkingSpeed
@@ -372,7 +389,8 @@ obj_hero = createObject(
         end
     end,
     function() -- draw function
-        drawSpriteAnimation(obj_hero.sprite.scrn, obj_hero.sprite, obj_hero.vars.x, obj_hero.vars.y)
+        --obj_hero.sprite:drawFrame(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 0) -- draw the hero sprite at the current position
+        obj_hero.sprite:playAnimation(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 1) -- draw the hero sprite at the current position
     end
 )
 
