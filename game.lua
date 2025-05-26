@@ -7,15 +7,12 @@
 -- Code written by sam-k0
 
 Image = require("Image")
-Debug.ON()
+--Debug.ON()
 --= Global Variables ==========--
-tmr = Timer.new()                   -- Create the timer
-tmr:start()                          -- Start the timer
 objList = {} -- list of objects
 sprList = {} -- list of sprites
 TARGET_FPS = 30
 SEED = 123456789 -- Seed for random number generator
-
 
 --= GAME states ==========--
 GS_PLAYING = 0
@@ -173,6 +170,32 @@ function randomPath()
         mark(x, y)
         steps = steps + 1
     end
+end
+
+--= Gui functions ==========--
+
+COLOR_GREEN = Color.new(0, 24, 0)   -- softer green
+COLOR_RED = Color.new(24, 0, 0)     -- softer red
+COLOR_BLUE = Color.new(0, 0, 24)    -- softer blue
+COLOR_BLACK = Color.new(4, 4, 4)    -- near-black, not pure black
+COLOR_WHITE = Color.new(31, 31, 31) -- white color
+COLOR_GOLD = Color.new(31, 24, 0) -- gold color
+
+function draw_bar(x,y,w,h,percent,bgColor, color, scrn)
+    -- Draw a bar with a percentage fill
+    local fillWidth = floor(w * percent)
+    screen.drawFillRect(scrn, x,y,x+w,y+h,bgColor) -- draw background
+    screen.drawFillRect(scrn, x, y, x+fillWidth, y+h, color) -- draw filled part
+end
+
+function draw_bar_text(x,y,w,h,percent,bgColor, color, scrn, text)
+    -- Draw a bar with a percentage fill and text
+    local fillWidth = floor(w * percent)
+    screen.drawFillRect(scrn, x,y,x+w,y+h,bgColor) -- draw background
+    screen.drawFillRect(scrn, x, y, x+fillWidth,y+h, color) -- draw filled part
+    -- draw text on top of the bar, anchor it to the left side
+    screen.print(scrn, x + 2, y + 2, text, COLOR_WHITE) -- draw text in white color
+
 end
 
 
@@ -393,7 +416,10 @@ obj_hero = createObject(
         walkingCooldown = 10, -- frames to wait before moving again
         walkingSpeed = 1, -- pixels per frame
         -- Battle stats
+        xp = 1, -- experience points
+        level = 1, -- hero level
         health = 100,
+        MAXHEALTH = 100, -- maximum health
         attack = 5,
         defense = 2,
         ATTACKCOOLDOWN = 45, -- frames to wait before attacking again
@@ -402,6 +428,20 @@ obj_hero = createObject(
             local currentX = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].x
             local currentY = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].y
             return obj_tilegrid.vars.tileGrid[currentY][currentX].data.enemies -- return enemies on the current tile
+        end,
+        calcLevelXPNeeded = function(level) -- calculate XP needed for next level
+            return 100 + (level-1) * 50 -- simple formula for XP needed for next level
+        end,
+        -- Level up function
+        levelUp = function()
+            local thisLevelXP = obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level) -- calculate XP needed for this level
+            obj_hero.vars.level = obj_hero.vars.level + 1 -- increase level
+            obj_hero.vars.xp = obj_hero.vars.xp - thisLevelXP -- reset XP to the remainder
+            obj_hero.vars.MAXHEALTH = obj_hero.vars.MAXHEALTH + 20 -- increase health
+            obj_hero.vars.attack = obj_hero.vars.attack + 2 -- increase attack
+            obj_hero.vars.defense = obj_hero.vars.defense + 1 -- increase defense
+            -- heal the hero
+            obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- heal the hero to full health
         end,
 
     },
@@ -467,6 +507,7 @@ obj_hero = createObject(
                     enemy.health = enemy.health - clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
                     if enemy.health <= 0 then
                         -- enemy defeated, remove from tile
+                        obj_hero.vars.xp = obj_hero.vars.xp + enemy.reward -- give XP to the hero
                         table.remove(enemies, 1) -- remove the first enemy
                        
                     end
@@ -478,7 +519,26 @@ obj_hero = createObject(
     function() -- draw function
         --obj_hero.sprite:drawFrame(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 0) -- draw the hero sprite at the current position
         obj_hero.sprite:playAnimation(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 1) -- draw the hero sprite at the current position
-        screen.print(SCREEN_UP, 64, 180, "Hero HP: "..obj_hero.vars.health)
+        -- Draw health bar
+        draw_bar_text(
+                    8,
+                    SCREEN_HEIGHT-16,
+                    SCREEN_WIDTH/3,
+                    10,
+                    obj_hero.vars.health / obj_hero.vars.MAXHEALTH,
+                    COLOR_RED, COLOR_GREEN, SCREEN_UP,
+                    "Hero HP: "..obj_hero.vars.health) -- draw health bar
+
+
+        draw_bar_text(
+                    SCREEN_WIDTH/2,
+                    SCREEN_HEIGHT-16,
+                    SCREEN_WIDTH/3,
+                    10,
+                    obj_hero.vars.xp / obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level),
+                    COLOR_BLUE, COLOR_GOLD, SCREEN_UP,
+                    "XP: "..obj_hero.vars.xp.."/"..obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level).." (Lvl "..obj_hero.vars.level..")"
+        )
 
         if GAMESTATE.HEROSTATE == HS_FIGHTING then
             -- Draw fighting UI or effects here
@@ -535,8 +595,7 @@ while not Keys.newPress.Start do
     drawGameObjects()
 
 
-    screen.print(SCREEN_UP, 0, 8, "Press START to quit")
-    screen.print(SCREEN_UP, 0, 16, "FPS: "..NB_FPS)
+    screen.print(SCREEN_UP, 0, 8, "Press START to quit - FPS: " .. NB_FPS)
     render()
 end
 -- Free resources
