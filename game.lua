@@ -14,6 +14,8 @@ sprList = {} -- list of sprites
 TARGET_FPS = 30
 SEED = 123456789 -- Seed for random number generator
 
+CARD_WIDTH = 16 -- width of a card in pixels
+CARD_HEIGHT = 22 -- height of a card in pixels
 --= GAME states ==========--
 GS_PLAYING = 0
 GS_PAUSED = 1
@@ -395,12 +397,10 @@ obj_tilegrid = createObject(
                 GAMESTATE.PAUSED = GS_PLAYING -- unpause the game after placing the card or deselecting it
             else
                 -- check if a card is tapped by checking if the stylus is within the card slots
-                local cardWidth = 16
-                local cardHeight = 24
                 for i = 1, obj_tilegrid.vars.maxCards do
-                    local x = 256 / 2 - cardWidth * obj_tilegrid.vars.maxCards / 2 + (i - 1) * cardWidth
-                    local y = SCREEN_HEIGHT - cardHeight - 8 -- place cards at the bottom of the screen
-                    if Stylus.X >= x and Stylus.X < x + cardWidth and Stylus.Y >= y and Stylus.Y < y + cardHeight then
+                    local x = 256 / 2 - CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * CARD_WIDTH
+                    local y = SCREEN_HEIGHT - CARD_HEIGHT - 8 -- place cards at the bottom of the screen
+                    if Stylus.X >= x and Stylus.X < x + CARD_WIDTH and Stylus.Y >= y and Stylus.Y < y + CARD_HEIGHT then
                         -- select the card if it exists
                         if i <= #obj_tilegrid.vars.heldCards then
                             -- selectedcard is a struct of {cardSlotIndex, cardData}
@@ -466,20 +466,18 @@ obj_tilegrid = createObject(
 
         -- draw card slots
         -- one card has width of 16 pixels, 256 / 16 = 16 cards can fit in one row
-        local cardWidth = 16
-        local cardHeight = 24
         for i = 1, obj_tilegrid.vars.maxCards do
-            local x = 256 / 2 - cardWidth * obj_tilegrid.vars.maxCards / 2 + (i - 1) * cardWidth
-            local y = SCREEN_HEIGHT - cardHeight - 8 -- place cards at the bottom of the screen
+            local x = 256 / 2 - CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * CARD_WIDTH
+            local y = SCREEN_HEIGHT - CARD_HEIGHT - 8 -- place cards at the bottom of the screen
             if i <= #obj_tilegrid.vars.heldCards then
                 -- draw card sprite if it exists
                 local card = obj_tilegrid.vars.heldCards[i]
                 if card then
-                    screen.blit(SCREEN_DOWN, x, y, card.spr, 0, 0, cardWidth, cardHeight) -- draw card sprite
+                    screen.blit(SCREEN_DOWN, x, y, card.spr, 0, 0, CARD_WIDTH, CARD_HEIGHT) -- draw card sprite
                 end
             else
                 -- draw empty slot
-                screen.blit(SCREEN_DOWN, x, y, spr_card_empty, 0, 0, cardWidth, cardHeight) -- draw empty card slot
+                screen.blit(SCREEN_DOWN, x, y, spr_card_empty, 0, 0, CARD_WIDTH, CARD_HEIGHT) -- draw empty card slot
             end
         end
 
