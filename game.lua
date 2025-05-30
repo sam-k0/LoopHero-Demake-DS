@@ -275,6 +275,20 @@ spr_tile_road_enemies = Image.load("tile_road_enemies.png", VRAM) -- load road t
 table.insert(sprList, spr_tile_road_enemies) -- add to sprite list
 --spr_tile_road_enemies:addAnimation({0},300) -- add animation for road tile with enemies
 
+spr_tile_mountain = Image.load("tile_mountain.png", VRAM) -- load mountain tile sprite
+table.insert(sprList, spr_tile_mountain) -- add to sprite list
+
+--== Create Card images ==========--
+spr_card_empty = Image.load("card_empty.png", VRAM) -- load empty card sprite
+table.insert(sprList, spr_card_empty) -- add to sprite list
+spr_card_mountain = Image.load("card_mountain.png", VRAM) -- load mountain card sprite
+table.insert(sprList, spr_card_mountain) -- add to sprite list
+
+CARD_ENUM = {
+    MOUNTAIN = "mountain", -- this is used to index the sprite in the tileSprites table
+}
+
+
 obj_tilegrid = createObject(
     nil, -- no sprite
     {
@@ -288,6 +302,12 @@ obj_tilegrid = createObject(
         tileCanvas = Canvas.new(), -- drawing onto canvas for performance
         canvasUpdate = true, -- flag to update canvas when needed
         roadPath = {}, -- this will hold the road path tiles in a sequence
+        stylusWasHeld = false, -- flag to check if stylus was held in the last frame
+        selectedCard = nil, -- currently selected card for placement
+        heldCards = {
+            {name = "Mountain", spr = spr_card_mountain, type = CARD_ENUM.MOUNTAIN},
+        }, -- cards held by the player, for placing on the grid
+        maxCards = 16, -- maximum number of cards that can be held
         cardPlaceToGridcoords = function(sx, sy)
             -- calculate grid's left edge as in the draw function
             local grid_left = 256 / 2 - obj_tilegrid.vars.tileSize * obj_tilegrid.vars.gridWidth / 2
@@ -301,6 +321,7 @@ obj_tilegrid = createObject(
         obj_tilegrid.vars.tileSprites["empty"] = spr_tile_empty
         obj_tilegrid.vars.tileSprites["road"] = spr_tile_road
         obj_tilegrid.vars.tileSprites["road_enemies"] = spr_tile_road_enemies
+        obj_tilegrid.vars.tileSprites["mountain"] = spr_tile_mountain
         -- grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             obj_tilegrid.vars.tileGrid[j] = {}
@@ -336,36 +357,83 @@ obj_tilegrid = createObject(
 
     end, -- end init function
     function() -- update function
+
+        -- If stylus is pressed, convert screen coordinates to grid coordinates
+        if Stylus.held and not obj_tilegrid.vars.stylusWasHeld then
+            if obj_tilegrid.vars.selectedCard then -- if a card is selected
+                local x, y = obj_tilegrid.vars.cardPlaceToGridcoords(Stylus.X, Stylus.Y) -- convert screen coordinates to grid coordinates
+                if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- check bounds
+                    local tile = obj_tilegrid.vars.tileGrid[y][x]
+                    if tile.occupied == false then -- if tile is not occupied
+                        -- TODO: actually place the card
+                        local cardIndex = obj_tilegrid.vars.selectedCard.cardSlotIndex -- get the index of the selected card
+                        local cardType = obj_tilegrid.vars.selectedCard.cardData.type -- get the type of the card
+                        local newtile = { -- tile data table for the new tile
+                                type = cardType, -- type of the tile, eg mountain or road
+                                occupied = true, -- is there a game object on this tile?
+                                data = {
+                                    updateFunc = nil, -- function to call for updates (e.g., spawn timer)
+                                    spr = obj_tilegrid.vars.tileSprites[cardType], -- sprite to draw for this tile
+                                }
+                            }
+
+                        -- specific card types may have additional data, assign it here using the card type
+                        if cardType == CARD_ENUM.MOUNTAIN then
+                            newtile.data.updateFunc = nil -- mountains do not have an update function
+                            newtile.data.enemies = {} -- no enemies on mountain tiles
+                        end
+
+                        obj_tilegrid.vars.heldCards[cardIndex] = nil -- remove the card from the held cards
+                        obj_tilegrid.vars.tileGrid[y][x] = newtile -- place the new tile in the grid
+                        obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update
+                        obj_tilegrid.vars.selectedCard = nil -- deselect card after placing it
+                    end
+                else 
+                    -- out of bounds, deselect card
+                    obj_tilegrid.vars.selectedCard = nil
+                end
+                GAMESTATE.PAUSED = GS_PLAYING -- unpause the game after placing the card or deselecting it
+            else
+                -- check if a card is tapped by checking if the stylus is within the card slots
+                local cardWidth = 16
+                local cardHeight = 24
+                for i = 1, obj_tilegrid.vars.maxCards do
+                    local x = 256 / 2 - cardWidth * obj_tilegrid.vars.maxCards / 2 + (i - 1) * cardWidth
+                    local y = SCREEN_HEIGHT - cardHeight - 8 -- place cards at the bottom of the screen
+                    if Stylus.X >= x and Stylus.X < x + cardWidth and Stylus.Y >= y and Stylus.Y < y + cardHeight then
+                        -- select the card if it exists
+                        if i <= #obj_tilegrid.vars.heldCards then
+                            -- selectedcard is a struct of {cardSlotIndex, cardData}
+                            obj_tilegrid.vars.selectedCard = {
+                                cardSlotIndex = i, -- index of the card slot
+                                cardData = obj_tilegrid.vars.heldCards[i], -- data of the card
+                            }                        
+                            GAMESTATE.PAUSED = GS_PAUSED -- pause the game to allow card placement
+                        end
+                        break -- exit loop after selecting a card
+                    end
+                end
+            end
+        end
+        stylusWasHeld = Stylus.held -- update the stylus held state
+ ---- === Everything below this line is updated every frame if not in fight or paused!!! === ----
         if GAMESTATE.PAUSED == GS_PAUSED or GAMESTATE.HEROSTATE == HS_FIGHTING then
-            return -- do not update if paused or in a fight state
+            return -- do not update grid 
         end
 
         -- update the tile grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             for i = 1, obj_tilegrid.vars.gridWidth do
                 local tile = obj_tilegrid.vars.tileGrid[j][i]
-                if tile.type == "road" then
-                    -- call the update function for the road tile
+                
+                if tile.data.updateFunc then -- if there is an update function assigned
+                    
                     local shouldUpdate=tile.data.updateFunc(tile) -- passing the tile for access to its properties
                     if shouldUpdate then
                         obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update if any tile was updated
                     end
                 end
-            end
-        end
-        -- If stylus is pressed, convert screen coordinates to grid coordinates
-        if Stylus.held then
-            local x, y = obj_tilegrid.vars.cardPlaceToGridcoords(Stylus.X, Stylus.Y) -- convert screen coordinates to grid coordinates
-            if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- check bounds
-                local tile = obj_tilegrid.vars.tileGrid[y][x]
-                if not tile.occupied then -- if tile is not occupied
-                    tile.type = "road" -- change tile type to road
-                    tile.data.updateFunc = updateRoadTile -- assign the update function for road tiles
-                    tile.data.spawnTimer = randomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- set initial spawn timer
-                    tile.data.spr = obj_tilegrid.vars.tileSprites["road"] -- set the sprite for the road tile
-                    
-                    obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update
-                end
+                
             end
         end
 
@@ -395,6 +463,26 @@ obj_tilegrid = createObject(
             
         end 
         Canvas.draw(SCREEN_DOWN, obj_tilegrid.vars.tileCanvas, obj_tilegrid.vars.x, obj_tilegrid.vars.y)   
+
+        -- draw card slots
+        -- one card has width of 16 pixels, 256 / 16 = 16 cards can fit in one row
+        local cardWidth = 16
+        local cardHeight = 24
+        for i = 1, obj_tilegrid.vars.maxCards do
+            local x = 256 / 2 - cardWidth * obj_tilegrid.vars.maxCards / 2 + (i - 1) * cardWidth
+            local y = SCREEN_HEIGHT - cardHeight - 8 -- place cards at the bottom of the screen
+            if i <= #obj_tilegrid.vars.heldCards then
+                -- draw card sprite if it exists
+                local card = obj_tilegrid.vars.heldCards[i]
+                if card then
+                    screen.blit(SCREEN_DOWN, x, y, card.spr, 0, 0, cardWidth, cardHeight) -- draw card sprite
+                end
+            else
+                -- draw empty slot
+                screen.blit(SCREEN_DOWN, x, y, spr_card_empty, 0, 0, cardWidth, cardHeight) -- draw empty card slot
+            end
+        end
+
     end
 )
 
@@ -449,6 +537,9 @@ obj_hero = createObject(
         -- nothing to do here
     end, 
     function() -- update function
+        if GAMESTATE.PAUSED == GS_PAUSED then
+            return -- do not update if paused
+        end
         if GAMESTATE.HEROSTATE == HS_WALKING then -- follow the path
 
             -- move hero along the road path
@@ -596,6 +687,13 @@ while not Keys.newPress.Start do
 
 
     screen.print(SCREEN_UP, 0, 8, "Press START to quit - FPS: " .. NB_FPS)
+
+    if obj_tilegrid.vars.selectedCard then
+        screen.print(SCREEN_UP, 0, 16, "Selected Card: " .. obj_tilegrid.vars.selectedCard.cardData.name)
+    else
+        screen.print(SCREEN_UP, 0, 16, "No card selected")
+    end
+
     render()
 end
 -- Free resources
