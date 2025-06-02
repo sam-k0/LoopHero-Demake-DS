@@ -2,6 +2,9 @@
 
 A DS demake of Loop Hero, a game by Four Quarters.
 
+As of now, the main focus is on building the core system of the game, which is the tile system and the combat system.
+Once this is done, adding new tiles and enemies should be easy.
+
 ## Featuremap
 - [x] Player can place tiles on the map
 - [x] Player levels up and improves stats
@@ -11,7 +14,7 @@ A DS demake of Loop Hero, a game by Four Quarters.
 - [ ] Random path generation
 - [ ] Encyclopedia
 - [ ] Main Menu
-- [ ] Camp (low priority)
+- [ ] Camp to place stuff (low priority)
 
 ## Install 
 
