@@ -16,6 +16,9 @@ SEED = 123456789 -- Seed for random number generator
 
 CARD_WIDTH = 16 -- width of a card in pixels
 CARD_HEIGHT = 22 -- height of a card in pixels
+
+obj_hero = nil -- hero object
+obj_tilegrid = nil -- tile grid object
 --= GAME states ==========--
 GS_PLAYING = 0
 GS_PAUSED = 1
@@ -263,19 +266,16 @@ end
 
 -- create tilegrid manager
 spr_tile_empty = Image.load("tile_empty.png", VRAM) -- load empty tile sprite
---spr_tile_empty = Sprite.new("tile_empty.png",16,16, VRAM)
 table.insert(sprList, spr_tile_empty) -- add to sprite list
---spr_tile_empty:addAnimation({0},300) -- add animation for empty tile
 
 spr_tile_road = Image.load("tile_road.png", VRAM) -- load road tile sprite
---spr_tile_road = Sprite.new("tile_road.png",16,16, VRAM)
 table.insert(sprList, spr_tile_road) -- add to sprite list
---spr_tile_road:addAnimation({0},300) -- add animation for road tile
+
+spr_tile_road_camp = Image.load("tile_road_camp.png", VRAM) -- load road tile with camp sprite
+table.insert(sprList, spr_tile_road_camp) -- add to sprite list
 
 spr_tile_road_enemies = Image.load("tile_road_enemies.png", VRAM) -- load road tile with enemies sprite
---spr_tile_road_enemies = Sprite.new("tile_road_enemies.png",16,16, VRAM) -- tile with enemies on it
 table.insert(sprList, spr_tile_road_enemies) -- add to sprite list
---spr_tile_road_enemies:addAnimation({0},300) -- add animation for road tile with enemies
 
 spr_tile_mountain = Image.load("tile_mountain.png", VRAM) -- load mountain tile sprite
 table.insert(sprList, spr_tile_mountain) -- add to sprite list
@@ -288,7 +288,48 @@ table.insert(sprList, spr_card_mountain) -- add to sprite list
 
 CARD_ENUM = {
     MOUNTAIN = "mountain", -- this is used to index the sprite in the tileSprites table
+    ROAD = "road", -- this is used to index the sprite in the tileSprites table
+    ROAD_CAMP = "road_camp", -- this is used to index the sprite in the tileSprites table
+    ROAD_ENEMIES = "road_enemies", -- this is used to index the sprite in the tileSprites table
 }
+
+-- card data table
+CARD_TABLE_MOUNTAIN = {
+    name = "Mountain",
+    spr = spr_card_mountain, -- sprite for the card
+    type = CARD_ENUM.MOUNTAIN, -- type of the card, used to place on the grid
+    initFunc = function() -- init function for the card, can be used to set up card-specific data
+        -- nothing to do here for now
+        obj_hero.vars.MAXHEALTH = obj_hero.vars.MAXHEALTH + 10 -- increase hero's max health by 20 when placing a mountain
+    end,
+    removeFunc = function() -- remove function for the card, can be used to clean up card-specific data
+        -- nothing to do here for now
+    end,
+    enterFunc = nil, -- function to call when hero enters the tile with this card
+    updateFunc = nil,    
+}
+
+CARD_TABLE_ROAD_CAMP = {
+    name = "Road Camp",
+    spr = nil, -- sprite for the card
+    type = CARD_ENUM.ROAD_CAMP, -- type of the card, used to place on the grid
+    initFunc = nil,
+    removeFunc = nil, -- if removeFunc is nil, the tile cannot be removed
+    enterFunc = function() -- function to call when hero enters the tile with this card
+        obj_hero.vars.health = obj_hero.vars.health + obj_hero.vars.MAXHEALTH * 0.1 -- heal the hero by 10% of max health
+        if obj_hero.vars.health > obj_hero.vars.MAXHEALTH then
+            obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- cap health at max health
+        end
+        screen.print(SCREEN_UP, 64, 64, "You found a camp! Resting...")
+        -- wait for a moment to show the message
+        wait(60) -- wait for 1 second
+    end,
+    updateFunc = nil,
+}
+
+
+
+
 
 
 obj_tilegrid = createObject(
@@ -307,7 +348,8 @@ obj_tilegrid = createObject(
         stylusWasHeld = false, -- flag to check if stylus was held in the last frame
         selectedCard = nil, -- currently selected card for placement
         heldCards = {
-            {name = "Mountain", spr = spr_card_mountain, type = CARD_ENUM.MOUNTAIN},
+            copyShallow(CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
+            copyShallow(CARD_TABLE_MOUNTAIN), -- duplicate for testing, can be removed later
         }, -- cards held by the player, for placing on the grid
         maxCards = 16, -- maximum number of cards that can be held
         cardPlaceToGridcoords = function(sx, sy)
@@ -321,9 +363,10 @@ obj_tilegrid = createObject(
     function() -- init grid to empty
         -- tile sprites
         obj_tilegrid.vars.tileSprites["empty"] = spr_tile_empty
-        obj_tilegrid.vars.tileSprites["road"] = spr_tile_road
-        obj_tilegrid.vars.tileSprites["road_enemies"] = spr_tile_road_enemies
-        obj_tilegrid.vars.tileSprites["mountain"] = spr_tile_mountain
+        obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD] = spr_tile_road
+        obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD_ENEMIES] = spr_tile_road_enemies
+        obj_tilegrid.vars.tileSprites[CARD_ENUM.MOUNTAIN] = spr_tile_mountain
+        obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD_CAMP] = spr_tile_road_camp 
         -- grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             obj_tilegrid.vars.tileGrid[j] = {}
@@ -345,15 +388,22 @@ obj_tilegrid = createObject(
         end
         -- make a connected looping road path
         local generatedPath = randomPath()
-        for _, pos in ipairs(generatedPath) do
+        for idx, pos in ipairs(generatedPath) do
             local x = pos.x
             local y = pos.y
             if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- assign road tile changes
-                obj_tilegrid.vars.tileGrid[y][x].type = "road"
+                obj_tilegrid.vars.tileGrid[y][x].type = CARD_ENUM.ROAD
                 table.insert(obj_tilegrid.vars.roadPath, {x = x, y = y})
                 obj_tilegrid.vars.tileGrid[y][x].data.updateFunc = updateRoadTile -- assign the update function for road tiles
                 obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = randomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
-                obj_tilegrid.vars.tileGrid[y][x].data.spr = obj_tilegrid.vars.tileSprites["road"] -- set the sprite for the road tile
+                obj_tilegrid.vars.tileGrid[y][x].data.spr = obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD] -- set the sprite for the road tile
+                -- check if we are processing the first tile in the path
+                if idx == 1 then
+                    -- this is the first tile, set it as a camp tile
+                    obj_tilegrid.vars.tileGrid[y][x].type = CARD_TABLE_ROAD_CAMP.type
+                    obj_tilegrid.vars.tileGrid[y][x].data.spr = obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD_CAMP] -- set sprite to road camp sprite
+                    obj_tilegrid.vars.tileGrid[y][x].data.updateFunc = nil -- no update function for camp tile
+                end
             end
         end
 
@@ -369,21 +419,24 @@ obj_tilegrid = createObject(
                     if tile.occupied == false then -- if tile is not occupied
                         -- TODO: actually place the card
                         local cardIndex = obj_tilegrid.vars.selectedCard.cardSlotIndex -- get the index of the selected card
-                        local cardType = obj_tilegrid.vars.selectedCard.cardData.type -- get the type of the card
-                        local newtile = { -- tile data table for the new tile
-                                type = cardType, -- type of the tile, eg mountain or road
+                        local cardData = obj_tilegrid.vars.selectedCard.cardData -- get the card data
+                        -- Call card init function if it exists
+                        
+                        if cardData.initFunc then
+                            cardData.initFunc() -- call the init function for the card, if it exists
+                        end
+                        
+                        local newtile = 
+                            { -- tile data table for the new tile
+                                type = cardData.type, -- type of the tile, eg mountain or road
                                 occupied = true, -- is there a game object on this tile?
                                 data = {
-                                    updateFunc = nil, -- function to call for updates (e.g., spawn timer)
-                                    spr = obj_tilegrid.vars.tileSprites[cardType], -- sprite to draw for this tile
+                                    updateFunc = cardData.updateFunc, -- function to call for updates (e.g., spawn timer)
+                                    removeFunc = cardData.removeFunc, -- function to call when removing the tile
+                                    spr = obj_tilegrid.vars.tileSprites[cardData.type], -- sprite to draw for this tile
                                 }
                             }
 
-                        -- specific card types may have additional data, assign it here using the card type
-                        if cardType == CARD_ENUM.MOUNTAIN then
-                            newtile.data.updateFunc = nil -- mountains do not have an update function
-                            newtile.data.enemies = {} -- no enemies on mountain tiles
-                        end
 
                         obj_tilegrid.vars.heldCards[cardIndex] = nil -- remove the card from the held cards
                         obj_tilegrid.vars.tileGrid[y][x] = newtile -- place the new tile in the grid
@@ -545,10 +598,10 @@ obj_hero = createObject(
             if obj_hero.vars.walkingCooldown <= 0 then
                 -- move to next tile in path
                 obj_hero.vars.currentRoadPathIndex = obj_hero.vars.currentRoadPathIndex + 1
-                if obj_hero.vars.currentRoadPathIndex > #obj_tilegrid.vars.roadPath then
+                if obj_hero.vars.currentRoadPathIndex > #obj_tilegrid.vars.roadPath then --== At starting tile, regenerate HP
                     obj_hero.vars.currentRoadPathIndex = 1 -- loop back to start
                 end
-
+-- TODO: CAll enter fucs
                 local nextTile = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex]
                 if nextTile then
                     obj_hero.vars.x = (nextTile.x * obj_tilegrid.vars.tileSize)  -- center the hero on the tile
@@ -616,7 +669,7 @@ obj_hero = createObject(
                     10,
                     obj_hero.vars.health / obj_hero.vars.MAXHEALTH,
                     COLOR_RED, COLOR_GREEN, SCREEN_UP,
-                    "Hero HP: "..obj_hero.vars.health) -- draw health bar
+                    "Hero HP: "..obj_hero.vars.health.."/"..obj_hero.vars.MAXHEALTH) -- draw health bar
 
 
         draw_bar_text(
