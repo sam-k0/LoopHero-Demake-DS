@@ -22,3 +22,5 @@ Once this is done, adding new tiles and enemies should be easy.
 2. Put the source code folder into lua/scripts/
 3. To play in DeSmuME, navigate to Config > Slot 2 (GBA Slot)
 4. From there change the drop down to Flash Card Device and the folder to the folder with MicroLua 4.7.2.nds
+
+![alt text](readmeimg/image.png)
