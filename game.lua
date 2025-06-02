@@ -76,6 +76,18 @@ function copyShallow(orig)
     return copy
 end
 
+function copyDeep(orig)
+    local copy = {}
+    for k, v in pairs(orig) do
+        if type(v) == "table" then
+            copy[k] = copyDeep(v) -- recursively copy tables
+        else
+            copy[k] = v -- copy value
+        end
+    end
+    return copy
+end
+
 
 --= Path finding functions
 
@@ -233,23 +245,6 @@ E_SLIME = {
     ATTACKCOOLDOWN = 35, -- frames to wait before attacking again
 }
 
---= Tile update functions ==========--
-function updateRoadTile(tile) -- passing the tile for access to its properties
-    -- spawn an enemy with a chance
-    tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
-    if tile.data.spawnTimer <= 0 then
-        tile.data.spawnTimer = randomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
-        if random() < 0.1 then --spawn enemy
-            if #tile.data.enemies == tile.data.maxEnemies then
-                return false -- don't spawn if max enemies reached
-            end
-            local enemy = copyShallow(randomChoice({E_GOBLIN, E_SLIME})) -- create a copy of the goblin stats prototype
-            table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
-            return true -- indicate that the tile was updated
-        end
-    end
-end
-
 
 
 --= Create objects ==========--
@@ -287,6 +282,7 @@ spr_card_mountain = Image.load("card_mountain.png", VRAM) -- load mountain card 
 table.insert(sprList, spr_card_mountain) -- add to sprite list
 
 CARD_ENUM = {
+    EMPTY = "empty", -- this is used to index the sprite in the tileSprites table
     MOUNTAIN = "mountain", -- this is used to index the sprite in the tileSprites table
     ROAD = "road", -- this is used to index the sprite in the tileSprites table
     ROAD_CAMP = "road_camp", -- this is used to index the sprite in the tileSprites table
@@ -296,6 +292,7 @@ CARD_ENUM = {
 -- card data table
 CARD_TABLE_MOUNTAIN = {
     name = "Mountain",
+    occupied = true,
     spr = spr_card_mountain, -- sprite for the card
     type = CARD_ENUM.MOUNTAIN, -- type of the card, used to place on the grid
     initFunc = function() -- init function for the card, can be used to set up card-specific data
@@ -307,11 +304,13 @@ CARD_TABLE_MOUNTAIN = {
     end,
     enterFunc = nil, -- function to call when hero enters the tile with this card
     updateFunc = nil,    
+    data = {},
 }
 
 CARD_TABLE_ROAD_CAMP = {
     name = "Road Camp",
     spr = nil, -- sprite for the card
+    occupied = true,
     type = CARD_ENUM.ROAD_CAMP, -- type of the card, used to place on the grid
     initFunc = nil,
     removeFunc = nil, -- if removeFunc is nil, the tile cannot be removed
@@ -321,14 +320,82 @@ CARD_TABLE_ROAD_CAMP = {
             obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- cap health at max health
         end
         screen.print(SCREEN_UP, 64, 64, "You found a camp! Resting...")
-        -- wait for a moment to show the message
-        wait(60) -- wait for 1 second
     end,
     updateFunc = nil,
+    data = {},
+}
+
+CARD_TABLE_ROAD = {
+    name = "Road",
+    spr = nil,
+    type = CARD_ENUM.ROAD, -- type of the card, used to place on the grid
+    initFunc = nil,
+    removeFunc = nil,
+    enterFunc = function(tile)
+    if #tile.data.enemies > 0 then
+        -- start fighting state, reset attack cooldown each combat
+        GAMESTATE.HEROSTATE = HS_FIGHTING
+        obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
+    end
+
+    end,   
+    updateFunc = function(tile)
+        tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
+        if tile.data.spawnTimer <= 0 then
+            tile.data.spawnTimer = randomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
+            if random() < 0.1 then --spawn enemy
+                if #tile.data.enemies == tile.data.maxEnemies then
+                    return false -- don't spawn if max enemies reached
+                end
+                local enemy = copyShallow(randomChoice({E_GOBLIN, E_SLIME})) -- create a copy of the goblin stats prototype
+                table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
+                return true -- indicate that the tile was updated
+            end
+        end
+        return false -- no update needed
+    end,
+    data = {
+        enemies = {}, -- list of enemies on this tile
+        spawnTimer = 0, -- timer for spawning enemies or events
+        minSpawnTimer = 120, -- minimum spawn timer
+        maxSpawnTimer = 300, -- maximum spawn timer
+        maxEnemies = 3, -- maximum number of enemies that can spawn on this tile
+    }
+}
+
+CARD_TABLE_EMPTY = {
+    name = "Empty",
+    spr = nil, 
+    type = CARD_ENUM.EMPTY, -- type of the card, used to place on the grid
+    occupied = false, -- this tile is not occupied
+    initFunc = nil, -- init function for the tile
+    removeFunc = nil, -- remove function for the tile
+    enterFunc = nil, -- function to call when hero enters the tile
+    updateFunc = nil, -- update function for the tile
+    data = {}, -- empty data table, no specific data for this tile
 }
 
 
 
+function cardTableToTileTable(cardTable)
+
+-- cause data can be empty
+    if not cardTable.data then
+        cardTable.data = {}
+    end
+
+    return {
+        name = cardTable.name,
+        occupied = cardTable.occupied,
+        spr = obj_tilegrid.vars.tileSprites[cardTable.type], -- use the tile sprite from the tileSprites table
+        type = cardTable.type, -- type of the tile, used to place on the grid
+        initFunc = cardTable.initFunc, -- init function for the tile
+        removeFunc = cardTable.removeFunc, -- remove function for the tile
+        enterFunc = cardTable.enterFunc, -- function to call when hero enters the tile
+        updateFunc = cardTable.updateFunc, -- update function for the tile
+        data = copyDeep(cardTable.data) or {}, -- {} is used to initialize data if not provided
+    }
+end
 
 
 
@@ -341,15 +408,21 @@ obj_tilegrid = createObject(
         gridWidth=14,
         gridHeight=8,
         tileGrid = {},
-        tileSprites ={},
+        tileSprites ={
+            [CARD_ENUM.EMPTY] = spr_tile_empty,
+            [CARD_ENUM.ROAD] = spr_tile_road,
+            [CARD_ENUM.ROAD_ENEMIES] = spr_tile_road_enemies,
+            [CARD_ENUM.MOUNTAIN] = spr_tile_mountain,
+            [CARD_ENUM.ROAD_CAMP] = spr_tile_road_camp,
+        },
         tileCanvas = Canvas.new(), -- drawing onto canvas for performance
         canvasUpdate = true, -- flag to update canvas when needed
         roadPath = {}, -- this will hold the road path tiles in a sequence
         stylusWasHeld = false, -- flag to check if stylus was held in the last frame
         selectedCard = nil, -- currently selected card for placement
         heldCards = {
-            copyShallow(CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
-            copyShallow(CARD_TABLE_MOUNTAIN), -- duplicate for testing, can be removed later
+            copyDeep(CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
+            copyDeep(CARD_TABLE_MOUNTAIN), -- duplicate for testing, can be removed later
         }, -- cards held by the player, for placing on the grid
         maxCards = 16, -- maximum number of cards that can be held
         cardPlaceToGridcoords = function(sx, sy)
@@ -361,29 +434,12 @@ obj_tilegrid = createObject(
         end
     },
     function() -- init grid to empty
-        -- tile sprites
-        obj_tilegrid.vars.tileSprites["empty"] = spr_tile_empty
-        obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD] = spr_tile_road
-        obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD_ENEMIES] = spr_tile_road_enemies
-        obj_tilegrid.vars.tileSprites[CARD_ENUM.MOUNTAIN] = spr_tile_mountain
-        obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD_CAMP] = spr_tile_road_camp 
+         
         -- grid
         for j = 1, obj_tilegrid.vars.gridHeight do
             obj_tilegrid.vars.tileGrid[j] = {}
             for i = 1, obj_tilegrid.vars.gridWidth do
-                obj_tilegrid.vars.tileGrid[j][i] = {
-                    type = "empty",   -- could be "path", "grass", "road", etc.
-                    occupied = false, -- is there a game object on this tile?
-                    data = {
-                        updateFunc = nil, -- function to call for updates (e.g., spawn timer)
-                        enemies = {}, -- list of enemies on this tile
-                        spawnTimer = 0, -- timer for spawning enemies or events
-                        minSpawnTimer = 120,
-                        maxSpawnTimer = 300, -- range for random spawn timer
-                        maxEnemies = 3, -- maximum number of enemies that can spawn on this tile
-                        spr = obj_tilegrid.vars.tileSprites["empty"], -- sprite to draw for this tile
-                    }         -- custom data (e.g., spawn timer, event flags)
-                }
+                obj_tilegrid.vars.tileGrid[j][i] = cardTableToTileTable(CARD_TABLE_EMPTY) -- initialize each tile with empty tile data 
             end
         end
         -- make a connected looping road path
@@ -392,17 +448,14 @@ obj_tilegrid = createObject(
             local x = pos.x
             local y = pos.y
             if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- assign road tile changes
-                obj_tilegrid.vars.tileGrid[y][x].type = CARD_ENUM.ROAD
                 table.insert(obj_tilegrid.vars.roadPath, {x = x, y = y})
-                obj_tilegrid.vars.tileGrid[y][x].data.updateFunc = updateRoadTile -- assign the update function for road tiles
+               
+                obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD)
+                -- assign random spawn timer for the road tile
                 obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = randomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
-                obj_tilegrid.vars.tileGrid[y][x].data.spr = obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD] -- set the sprite for the road tile
-                -- check if we are processing the first tile in the path
-                if idx == 1 then
-                    -- this is the first tile, set it as a camp tile
-                    obj_tilegrid.vars.tileGrid[y][x].type = CARD_TABLE_ROAD_CAMP.type
-                    obj_tilegrid.vars.tileGrid[y][x].data.spr = obj_tilegrid.vars.tileSprites[CARD_ENUM.ROAD_CAMP] -- set sprite to road camp sprite
-                    obj_tilegrid.vars.tileGrid[y][x].data.updateFunc = nil -- no update function for camp tile
+                
+                if idx == 1 then-- check if we are processing the first tile in the path
+                    obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD_CAMP)
                 end
             end
         end
@@ -417,37 +470,25 @@ obj_tilegrid = createObject(
                 if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- check bounds
                     local tile = obj_tilegrid.vars.tileGrid[y][x]
                     if tile.occupied == false then -- if tile is not occupied
-                        -- TODO: actually place the card
                         local cardIndex = obj_tilegrid.vars.selectedCard.cardSlotIndex -- get the index of the selected card
                         local cardData = obj_tilegrid.vars.selectedCard.cardData -- get the card data
-                        -- Call card init function if it exists
-                        
-                        if cardData.initFunc then
-                            cardData.initFunc() -- call the init function for the card, if it exists
+                        local newtile = cardTableToTileTable(cardData)
+                        if newtile.initFunc then
+                            newtile.initFunc() 
                         end
-                        
-                        local newtile = 
-                            { -- tile data table for the new tile
-                                type = cardData.type, -- type of the tile, eg mountain or road
-                                occupied = true, -- is there a game object on this tile?
-                                data = {
-                                    updateFunc = cardData.updateFunc, -- function to call for updates (e.g., spawn timer)
-                                    removeFunc = cardData.removeFunc, -- function to call when removing the tile
-                                    spr = obj_tilegrid.vars.tileSprites[cardData.type], -- sprite to draw for this tile
-                                }
-                            }
-
+                        newtile.occupied = true -- mark as occupied
 
                         obj_tilegrid.vars.heldCards[cardIndex] = nil -- remove the card from the held cards
                         obj_tilegrid.vars.tileGrid[y][x] = newtile -- place the new tile in the grid
                         obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update
                         obj_tilegrid.vars.selectedCard = nil -- deselect card after placing it
+                        GAMESTATE.PAUSED = GS_PLAYING
                     end
                 else 
                     -- out of bounds, deselect card
                     obj_tilegrid.vars.selectedCard = nil
+                    GAMESTATE.PAUSED = GS_PLAYING
                 end
-                GAMESTATE.PAUSED = GS_PLAYING -- unpause the game after placing the card or deselecting it
             else
                 -- check if a card is tapped by checking if the stylus is within the card slots
                 for i = 1, obj_tilegrid.vars.maxCards do
@@ -479,10 +520,8 @@ obj_tilegrid = createObject(
             for i = 1, obj_tilegrid.vars.gridWidth do
                 local tile = obj_tilegrid.vars.tileGrid[j][i]
                 
-                if tile.data.updateFunc then -- if there is an update function assigned
-                    
-                    local shouldUpdate=tile.data.updateFunc(tile) -- passing the tile for access to its properties
-                    if shouldUpdate then
+                if tile.updateFunc then -- if there is an update function assigned
+                    if tile.updateFunc(tile) == true then
                         obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update if any tile was updated
                     end
                 end
@@ -503,7 +542,7 @@ obj_tilegrid = createObject(
                     local x = 256 / 2 - 16 * obj_tilegrid.vars.gridWidth / 2 + (i - 1) * obj_tilegrid.vars.tileSize
                     local y = obj_tilegrid.vars.y + (j - 1) * obj_tilegrid.vars.tileSize
                     -- draw tile sprite onto canvas
-                    local cobj = Canvas.newImage(x,y,tile.data.spr) -- canvas object for this tile, default to the assigned sprite
+                    local cobj = Canvas.newImage(x,y,tile.spr) -- canvas object for this tile, default to the assigned sprite
                     
                     -- if  it is a road tile with enemies, change the sprite
                     if tile.type == "road" and #tile.data.enemies > 0 then
@@ -601,19 +640,16 @@ obj_hero = createObject(
                 if obj_hero.vars.currentRoadPathIndex > #obj_tilegrid.vars.roadPath then --== At starting tile, regenerate HP
                     obj_hero.vars.currentRoadPathIndex = 1 -- loop back to start
                 end
--- TODO: CAll enter fucs
+
                 local nextTile = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex]
                 if nextTile then
                     obj_hero.vars.x = (nextTile.x * obj_tilegrid.vars.tileSize)  -- center the hero on the tile
                     obj_hero.vars.y = (nextTile.y * obj_tilegrid.vars.tileSize) -16 -- center the hero on the tile
                     obj_hero.vars.walkingCooldown = obj_hero.vars.WALKING_COOLDOWN -- reset cooldown
-                    -- does it have enemies?
-                    -- first resolve the actual tile from the position
+                    -- step on next tile
                     local ftile = obj_tilegrid.vars.tileGrid[nextTile.y][nextTile.x]
-                    if ftile.type == "road" and #ftile.data.enemies > 0 then
-                        -- start fighting state, reset attack cooldown each combat
-                        GAMESTATE.HEROSTATE = HS_FIGHTING
-                        obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
+                    if ftile.enterFunc then
+                        ftile.enterFunc(ftile) -- call enter function if it exists
                     end
                 end
             end
@@ -743,6 +779,15 @@ while not Keys.newPress.Start do
         screen.print(SCREEN_UP, 0, 16, "Selected Card: " .. obj_tilegrid.vars.selectedCard.cardData.name)
     else
         screen.print(SCREEN_UP, 0, 16, "No card selected")
+    end
+
+    -- Show gamestate
+    if GAMESTATE.PAUSED == GS_PAUSED then
+        screen.print(SCREEN_UP, 0, 24, "Game is paused. Tap a card to place it.")
+    elseif GAMESTATE.PAUSED == GS_PLAYING then
+        screen.print(SCREEN_UP, 0, 24, "Game is running. Tap a card to select it.")
+    elseif GAMESTATE.PAUSED == GS_GAMEOVER then
+        screen.print(SCREEN_UP, 0, 24, "Game Over! Press START to quit.")
     end
 
     render()
