@@ -1,3 +1,4 @@
+---@diagnostic disable: undefined-global
 -- Loop Hero reimplementation for Nintendo DS Lua (microLua DS)
 -- Original game by Four Quarters 
 -- This is a reimplementation of the game mechanics and features and does not use any code from the original game.
@@ -34,7 +35,7 @@ GAMESTATE = {
 
 --= Math Functions ==========--
 
-function random()
+function Random()
     -- Constants from Numerical Recipes LCG
     local seed = SEED
     seed = (1103515245 * seed + 12345) % 2147483648
@@ -43,32 +44,39 @@ function random()
     return (seed % 10000) / 10000  -- returns a float between 0.0 and 1.0
 end
 
-function floor(x)
+function Floor(x)
     return x - (x % 1)
 end
 
-function randomRange(min, max)
+function RandomRange(min, max)
     if max == nil then
         return min
     end
-    return floor(random() * (max - min + 1) + min)
+    return Floor(Random() * (max - min + 1) + min)
 end
 
-function randomChoice(t)
-    return t[randomRange(1, #t)]
+function RandomChoice(t)
+    return t[RandomRange(1, #t)]
 end
 
-function randomInt(a, b)
-    return a + floor(random() * (b - a + 1))
+function RandomInt(a, b)
+    return a + Floor(Random() * (b - a + 1))
 end
 
-function clamp(val, min, max)
+function Clamp(val, min, max)
     if val < min then return min end
     if val > max then return max end
     return val
 end
 
-function copyShallow(orig)
+function Round(num, decimals)
+    local mult = 10^(decimals or 0)
+    return math.floor(num * mult + 0.5) / mult
+end
+
+
+
+function CopyShallow(orig)
     local copy = {}
     for k, v in pairs(orig) do
         copy[k] = v
@@ -76,11 +84,11 @@ function copyShallow(orig)
     return copy
 end
 
-function copyDeep(orig)
+function CopyDeep(orig)
     local copy = {}
     for k, v in pairs(orig) do
         if type(v) == "table" then
-            copy[k] = copyDeep(v) -- recursively copy tables
+            copy[k] = CopyDeep(v) -- recursively copy tables
         else
             copy[k] = v -- copy value
         end
@@ -89,7 +97,7 @@ function copyDeep(orig)
 end
 
 
---= Path finding functions
+--= Grid and path functions ==========--
 
 
 -- Check if position is within grid bounds
@@ -147,7 +155,7 @@ function randomPath()
     -- Shuffle helper using randomRange
     local function shuffle(t)
         for i = #t, 2, -1 do
-            local j = randomRange(1, i)
+            local j = RandomRange(1, i)
             t[i], t[j] = t[j], t[i]
         end
     end
@@ -189,6 +197,28 @@ function randomPath()
     end
 end
 
+function getAdjacentTiles(x,y,_type)
+    -- Get adjacent tiles of a specific type
+    local adjacent = {}
+    local directions = {
+        {dx = 1, dy = 0},  -- right
+        {dx = -1, dy = 0}, -- left
+        {dx = 0, dy = 1},  -- down
+        {dx = 0, dy = -1}  -- up
+    }
+    for _, dir in ipairs(directions) do
+        local nx, ny = x + dir.dx, y + dir.dy
+        if inBounds(nx, ny, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then
+            local tile = obj_tilegrid.vars.tileGrid[ny][nx]
+            if tile.type == _type or _type == nil then
+                table.insert(adjacent, tile)
+            end
+        end
+    end
+    return adjacent
+end
+
+
 --= Gui functions ==========--
 
 COLOR_GREEN = Color.new(0, 24, 0)   -- softer green
@@ -200,14 +230,14 @@ COLOR_GOLD = Color.new(31, 24, 0) -- gold color
 
 function draw_bar(x,y,w,h,percent,bgColor, color, scrn)
     -- Draw a bar with a percentage fill
-    local fillWidth = floor(w * percent)
+    local fillWidth = Floor(w * percent)
     screen.drawFillRect(scrn, x,y,x+w,y+h,bgColor) -- draw background
     screen.drawFillRect(scrn, x, y, x+fillWidth, y+h, color) -- draw filled part
 end
 
 function draw_bar_text(x,y,w,h,percent,bgColor, color, scrn, text)
     -- Draw a bar with a percentage fill and text
-    local fillWidth = floor(w * percent)
+    local fillWidth = Floor(w * percent)
     screen.drawFillRect(scrn, x,y,x+w,y+h,bgColor) -- draw background
     screen.drawFillRect(scrn, x, y, x+fillWidth,y+h, color) -- draw filled part
     -- draw text on top of the bar, anchor it to the left side
@@ -217,32 +247,46 @@ end
 
 
 --= Enemy stats ==========--
+
+ENEMY_STRENGTH_MP = 0.95 
+-- Final STR = Base STR × Loop Count × (1 + Difficulty Enemy Strength) × (1 + (Loop Count - 1) × Difficulty Enemy Strength Growth)
+
+function ScaleEnemy(_enemy)
+    local l = obj_hero.vars.loop
+    _enemy.health = Floor(_enemy.health + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
+    _enemy.attack = Floor(_enemy.attack + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
+end
+
+
+
 spr_enemy_goblin = Image.load("goblin.png", VRAM) -- load goblin image
 table.insert(sprList, spr_enemy_goblin) -- add to sprite list
 E_GOBLIN = {
     name = "Goblin",
-    health = 15,
-    attack = 3,
-    defense = 1,
-    speed = 1,
-    reward = 5, -- reward for defeating this enemy
+    health = 11, 
+    attack = 3.2, 
+    strengthGrowth = 0.01,
+    defense = 0.5,
+    speed = 0.6,
+    reward = 8, -- reward for defeating this enemy
     spr = spr_enemy_goblin,
-    attackCooldown = 20, -- frames to wait before attacking again
-    ATTACKCOOLDOWN = 20, -- frames to wait before attacking again
+    attackCooldown = Floor(30/0.6), -- frames to wait before attacking again
+    ATTACKCOOLDOWN = Floor(30/0.6), -- frames to wait before attacking again
 }
 
 spr_enemy_slime = Image.load("slime.png", VRAM) -- load slime sprite
 table.insert(sprList, spr_enemy_slime) -- add to sprite list
 E_SLIME = {
     name = "Slime",
-    health = 8,
-    attack = 3,
+    health = 12, 
+    attack = 3.3,
+    strengthGrowth = 0.02,
     defense = 0,
     speed = 1,
-    reward = 3, -- reward for defeating this enemy
+    reward = 5, -- reward for defeating this enemy
     spr = spr_enemy_slime,
-    attackCooldown = 35, -- frames to wait before attacking again
-    ATTACKCOOLDOWN = 35, -- frames to wait before attacking again
+    attackCooldown = 30, -- frames to wait before attacking again
+    ATTACKCOOLDOWN = 30, -- frames to wait before attacking again
 }
 
 
@@ -275,11 +319,16 @@ table.insert(sprList, spr_tile_road_enemies) -- add to sprite list
 spr_tile_mountain = Image.load("tile_mountain.png", VRAM) -- load mountain tile sprite
 table.insert(sprList, spr_tile_mountain) -- add to sprite list
 
+spr_tile_meadow = Image.load("tile_meadow.png", VRAM) -- load meadow tile sprite
+table.insert(sprList, spr_tile_meadow) -- add to sprite list
+
 --== Create Card images ==========--
 spr_card_empty = Image.load("card_empty.png", VRAM) -- load empty card sprite
 table.insert(sprList, spr_card_empty) -- add to sprite list
 spr_card_mountain = Image.load("card_mountain.png", VRAM) -- load mountain card sprite
 table.insert(sprList, spr_card_mountain) -- add to sprite list
+spr_card_meadow = Image.load("card_meadow.png", VRAM) -- load meadow card sprite
+table.insert(sprList, spr_card_meadow) -- add to sprite list
 
 CARD_ENUM = {
     EMPTY = "empty", -- this is used to index the sprite in the tileSprites table
@@ -287,6 +336,7 @@ CARD_ENUM = {
     ROAD = "road", -- this is used to index the sprite in the tileSprites table
     ROAD_CAMP = "road_camp", -- this is used to index the sprite in the tileSprites table
     ROAD_ENEMIES = "road_enemies", -- this is used to index the sprite in the tileSprites table
+    MEADOW = "meadow", -- this is used to index the sprite in the tileSprites table
 }
 
 -- card data table
@@ -319,6 +369,7 @@ CARD_TABLE_ROAD_CAMP = {
         if obj_hero.vars.health > obj_hero.vars.MAXHEALTH then
             obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- cap health at max health
         end
+        obj_hero.vars.loop = obj_hero.vars.loop + 1
         screen.print(SCREEN_UP, 64, 64, "You found a camp! Resting...")
     end,
     updateFunc = nil,
@@ -342,12 +393,13 @@ CARD_TABLE_ROAD = {
     updateFunc = function(tile)
         tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
         if tile.data.spawnTimer <= 0 then
-            tile.data.spawnTimer = randomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
-            if random() < 0.1 then --spawn enemy
+            tile.data.spawnTimer = RandomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
+            if Random() < 0.1 then --spawn enemy
                 if #tile.data.enemies == tile.data.maxEnemies then
                     return false -- don't spawn if max enemies reached
                 end
-                local enemy = copyShallow(randomChoice({E_GOBLIN, E_SLIME})) -- create a copy of the goblin stats prototype
+                local enemy = CopyShallow(RandomChoice({E_GOBLIN, E_SLIME}))
+                ScaleEnemy(enemy)
                 table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
                 return true -- indicate that the tile was updated
             end
@@ -361,6 +413,20 @@ CARD_TABLE_ROAD = {
         maxSpawnTimer = 300, -- maximum spawn timer
         maxEnemies = 3, -- maximum number of enemies that can spawn on this tile
     }
+}
+
+CARD_TABLE_MEADOW = {
+    name = "Meadow",
+    spr = spr_card_meadow, -- sprite for the card
+    type = CARD_ENUM.MEADOW, -- type of the card, used to place on the grid
+    occupied = true, -- this tile is occupied
+    initFunc = function() -- init function for the card, can be used to set up card-specific data
+        obj_hero.vars.regeneration = obj_hero.vars.regeneration + 0.5 
+    end,
+    removeFunc = nil, -- remove function for the card, can be used to clean up card-specific data
+    enterFunc = nil, -- function to call when hero enters the tile with this card
+    updateFunc = nil,
+    data = {},
 }
 
 CARD_TABLE_EMPTY = {
@@ -393,7 +459,7 @@ function cardTableToTileTable(cardTable)
         removeFunc = cardTable.removeFunc, -- remove function for the tile
         enterFunc = cardTable.enterFunc, -- function to call when hero enters the tile
         updateFunc = cardTable.updateFunc, -- update function for the tile
-        data = copyDeep(cardTable.data) or {}, -- {} is used to initialize data if not provided
+        data = CopyDeep(cardTable.data) or {}, -- {} is used to initialize data if not provided
     }
 end
 
@@ -414,6 +480,7 @@ obj_tilegrid = createObject(
             [CARD_ENUM.ROAD_ENEMIES] = spr_tile_road_enemies,
             [CARD_ENUM.MOUNTAIN] = spr_tile_mountain,
             [CARD_ENUM.ROAD_CAMP] = spr_tile_road_camp,
+            [CARD_ENUM.MEADOW] = spr_tile_meadow,
         },
         tileCanvas = Canvas.new(), -- drawing onto canvas for performance
         canvasUpdate = true, -- flag to update canvas when needed
@@ -421,15 +488,16 @@ obj_tilegrid = createObject(
         stylusWasHeld = false, -- flag to check if stylus was held in the last frame
         selectedCard = nil, -- currently selected card for placement
         heldCards = {
-            copyDeep(CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
-            copyDeep(CARD_TABLE_MOUNTAIN), -- duplicate for testing, can be removed later
+            CopyDeep(CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
+            CopyDeep(CARD_TABLE_MOUNTAIN), -- duplicate for testing, can be removed later
+            CopyDeep(CARD_TABLE_MEADOW), -- initial cards held by the player, can be expanded with more cards
         }, -- cards held by the player, for placing on the grid
         maxCards = 16, -- maximum number of cards that can be held
         cardPlaceToGridcoords = function(sx, sy)
             -- calculate grid's left edge as in the draw function
             local grid_left = 256 / 2 - obj_tilegrid.vars.tileSize * obj_tilegrid.vars.gridWidth / 2
-            local x = floor((sx - grid_left) / obj_tilegrid.vars.tileSize) + 1
-            local y = floor((sy - obj_tilegrid.vars.y) / obj_tilegrid.vars.tileSize) + 1
+            local x = Floor((sx - grid_left) / obj_tilegrid.vars.tileSize) + 1
+            local y = Floor((sy - obj_tilegrid.vars.y) / obj_tilegrid.vars.tileSize) + 1
             return x, y
         end
     },
@@ -452,7 +520,7 @@ obj_tilegrid = createObject(
                
                 obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD)
                 -- assign random spawn timer for the road tile
-                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = randomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
+                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = RandomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
                 
                 if idx == 1 then-- check if we are processing the first tile in the path
                     obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD_CAMP)
@@ -594,14 +662,16 @@ obj_hero = createObject(
         walkingCooldown = 10, -- frames to wait before moving again
         walkingSpeed = 1, -- pixels per frame
         -- Battle stats
-        xp = 1, -- experience points
+        xp = 99, -- experience points
+        loop = 1, -- current loop number
         level = 1, -- hero level
-        health = 100,
-        MAXHEALTH = 100, -- maximum health
+        health = 250,
+        MAXHEALTH = 250, -- maximum health
+        regeneration = 0.1, -- regen per step
         attack = 5,
-        defense = 2,
-        ATTACKCOOLDOWN = 45, -- frames to wait before attacking again
-        attackCooldown = 45, -- frames to wait before attacking again
+        defense = 1,
+        ATTACKCOOLDOWN = 30, -- frames to wait before attacking again
+        attackCooldown = 30, -- frames to wait before attacking again
         getTileEnemies = function() -- function to get enemies on the current tile
             local currentX = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].x
             local currentY = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex].y
@@ -621,6 +691,12 @@ obj_hero = createObject(
             -- heal the hero
             obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- heal the hero to full health
         end,
+        regenerateHealth = function() -- regenerate health
+            obj_hero.vars.health = obj_hero.vars.health + obj_hero.vars.regeneration -- regenerate health
+            if obj_hero.vars.health > obj_hero.vars.MAXHEALTH then
+                obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- cap health at max health
+            end
+        end,
 
     },
     function() -- init
@@ -635,12 +711,13 @@ obj_hero = createObject(
             -- move hero along the road path
             obj_hero.vars.walkingCooldown = obj_hero.vars.walkingCooldown - obj_hero.vars.walkingSpeed
             if obj_hero.vars.walkingCooldown <= 0 then
+                obj_hero.vars.regenerateHealth() -- regenerate health on each step
                 -- move to next tile in path
                 obj_hero.vars.currentRoadPathIndex = obj_hero.vars.currentRoadPathIndex + 1
                 if obj_hero.vars.currentRoadPathIndex > #obj_tilegrid.vars.roadPath then --== At starting tile, regenerate HP
                     obj_hero.vars.currentRoadPathIndex = 1 -- loop back to start
                 end
-
+                -- get the next tile in the path
                 local nextTile = obj_tilegrid.vars.roadPath[obj_hero.vars.currentRoadPathIndex]
                 if nextTile then
                     obj_hero.vars.x = (nextTile.x * obj_tilegrid.vars.tileSize)  -- center the hero on the tile
@@ -666,7 +743,7 @@ obj_hero = createObject(
                     enemy.attackCooldown = enemy.attackCooldown - 1 -- decrement attack cooldown
                     if enemy.attackCooldown <= 0 then
                         -- attack the hero
-                        obj_hero.vars.health = obj_hero.vars.health - clamp(enemy.attack - obj_hero.vars.defense, 0, enemy.attack - obj_hero.vars.defense+1) -- calculate damage
+                        obj_hero.vars.health = Round(obj_hero.vars.health - Clamp(enemy.attack - obj_hero.vars.defense, 0, enemy.attack - obj_hero.vars.defense+1),1) -- calculate damage
                         if obj_hero.vars.health <= 0 then
                             -- hero defeated, game over state
                             GAMESTATE.PAUSED = GS_GAMEOVER
@@ -682,10 +759,13 @@ obj_hero = createObject(
                     
                     obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
                     local enemy = enemies[1] -- focus the first enemy
-                    enemy.health = enemy.health - clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
+                    enemy.health = enemy.health - Clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
                     if enemy.health <= 0 then
                         -- enemy defeated, remove from tile
                         obj_hero.vars.xp = obj_hero.vars.xp + enemy.reward -- give XP to the hero
+                        if obj_hero.vars.xp >= obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level) then
+                            obj_hero.vars.levelUp() -- level up the hero
+                        end
                         table.remove(enemies, 1) -- remove the first enemy
                        
                     end
