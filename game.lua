@@ -193,7 +193,6 @@ obj_tilegrid = createObject(
         tileCanvas = Canvas.new(), -- drawing onto canvas for performance
         canvasUpdate = true, -- flag to update canvas when needed
         roadPath = {}, -- this will hold the road path tiles in a sequence
-        stylusWasHeld = false, -- flag to check if stylus was held in the last frame
         selectedCard = nil, -- currently selected card for placement
         heldCards = {
             Copy.CopyDeep(Cards.CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
@@ -240,7 +239,7 @@ obj_tilegrid = createObject(
     function() -- update function
 
         -- If stylus is pressed, convert screen coordinates to grid coordinates
-        if Stylus.held and not obj_tilegrid.vars.stylusWasHeld then
+        if Stylus.newPress then
             if obj_tilegrid.vars.selectedCard then -- if a card is selected
                 local x, y = obj_tilegrid.vars.cardPlaceToGridcoords(Stylus.X, Stylus.Y) -- convert screen coordinates to grid coordinates
                 if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- check bounds
@@ -285,7 +284,6 @@ obj_tilegrid = createObject(
                 end
             end
         end
-        stylusWasHeld = Stylus.held -- update the stylus held state
  ---- === Everything below this line is updated every frame if not in fight or paused!!! === ----
         if GAMESTATE.PAUSED == GS_PAUSED or GAMESTATE.HEROSTATE == HS_FIGHTING then
             return -- do not update grid 
