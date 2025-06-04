@@ -68,7 +68,7 @@ cards.CARD_TABLE_ROAD = {
                     return false
                 end
                 local enemy = Copy.CopyShallow(Umath.RandomChoice({Enemies.E_GOBLIN, Enemies.E_SLIME}))
-                ScaleEnemy(enemy)
+                Enemies.ScaleEnemy(enemy)
                 table.insert(tile.data.enemies, enemy)
                 return true
             end

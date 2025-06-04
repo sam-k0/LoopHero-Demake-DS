@@ -159,15 +159,6 @@ end
 
 
 
---= Enemy stats ==========--
-ENEMY_STRENGTH_MP = 0.95 
--- Final STR = Base STR × Loop Count × (1 + Difficulty Enemy Strength) × (1 + (Loop Count - 1) × Difficulty Enemy Strength Growth)
-
-function ScaleEnemy(_enemy)
-    local l = obj_hero.vars.loop
-    _enemy.health = Umath.Floor(_enemy.health + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
-    _enemy.attack = Umath.Floor(_enemy.attack + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
-end
 
 --= Create objects ==========--
 
@@ -182,8 +173,6 @@ function createObject(sprAnim,varTable,initFunc, updateFunc, drawFunc ) -- objec
 end
 
 -- create tilegrid manager
-
-
 obj_tilegrid = createObject(
     nil, -- no sprite
     {
