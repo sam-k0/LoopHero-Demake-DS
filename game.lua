@@ -10,14 +10,10 @@
 local Image = require("Image")
 local gamegui = require("modules/gui")
 local umath = require("modules/umath")
+local usprites = require("modules/usprites") -- load sprites module
 
 --= Global Variables ==========--
 objList = {} -- list of objects
-sprList = {} -- list of sprites
-
-
-CARD_WIDTH = 16 -- width of a card in pixels
-CARD_HEIGHT = 22 -- height of a card in pixels
 
 obj_hero = nil -- hero object
 obj_tilegrid = nil -- tile grid object
@@ -191,10 +187,6 @@ function ScaleEnemy(_enemy)
     _enemy.attack = umath.Floor(_enemy.attack + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
 end
 
-
-
-spr_enemy_goblin = Image.load("gameassets/goblin.png", VRAM) -- load goblin image
-table.insert(sprList, spr_enemy_goblin) -- add to sprite list
 E_GOBLIN = {
     name = "Goblin",
     health = 11, 
@@ -203,13 +195,11 @@ E_GOBLIN = {
     defense = 0.5,
     speed = 0.6,
     reward = 8, -- reward for defeating this enemy
-    spr = spr_enemy_goblin,
+    spr = usprites.spr_enemy_goblin,
     attackCooldown = umath.Floor(30/0.6), -- frames to wait before attacking again
     ATTACKCOOLDOWN = umath.Floor(30/0.6), -- frames to wait before attacking again
 }
 
-spr_enemy_slime = Image.load("gameassets/slime.png", VRAM) -- load slime sprite
-table.insert(sprList, spr_enemy_slime) -- add to sprite list
 E_SLIME = {
     name = "Slime",
     health = 12, 
@@ -218,7 +208,7 @@ E_SLIME = {
     defense = 0,
     speed = 1,
     reward = 5, -- reward for defeating this enemy
-    spr = spr_enemy_slime,
+    spr = usprites.spr_enemy_slime,
     attackCooldown = 30, -- frames to wait before attacking again
     ATTACKCOOLDOWN = 30, -- frames to wait before attacking again
 }
@@ -238,31 +228,6 @@ function createObject(sprAnim,varTable,initFunc, updateFunc, drawFunc ) -- objec
 end
 
 -- create tilegrid manager
-spr_tile_empty = Image.load("gameassets/tile_empty.png", VRAM) -- load empty tile sprite
-table.insert(sprList, spr_tile_empty) -- add to sprite list
-
-spr_tile_road = Image.load("gameassets/tile_road.png", VRAM) -- load road tile sprite
-table.insert(sprList, spr_tile_road) -- add to sprite list
-
-spr_tile_road_camp = Image.load("gameassets/tile_road_camp.png", VRAM) -- load road tile with camp sprite
-table.insert(sprList, spr_tile_road_camp) -- add to sprite list
-
-spr_tile_road_enemies = Image.load("gameassets/tile_road_enemies.png", VRAM) -- load road tile with enemies sprite
-table.insert(sprList, spr_tile_road_enemies) -- add to sprite list
-
-spr_tile_mountain = Image.load("gameassets/tile_mountain.png", VRAM) -- load mountain tile sprite
-table.insert(sprList, spr_tile_mountain) -- add to sprite list
-
-spr_tile_meadow = Image.load("gameassets/tile_meadow.png", VRAM) -- load meadow tile sprite
-table.insert(sprList, spr_tile_meadow) -- add to sprite list
-
---== Create Card images ==========--
-spr_card_empty = Image.load("gameassets/card_empty.png", VRAM) -- load empty card sprite
-table.insert(sprList, spr_card_empty) -- add to sprite list
-spr_card_mountain = Image.load("gameassets/card_mountain.png", VRAM) -- load mountain card sprite
-table.insert(sprList, spr_card_mountain) -- add to sprite list
-spr_card_meadow = Image.load("gameassets/card_meadow.png", VRAM) -- load meadow card sprite
-table.insert(sprList, spr_card_meadow) -- add to sprite list
 
 CARD_ENUM = {
     EMPTY = "empty", -- this is used to index the sprite in the tileSprites table
@@ -277,7 +242,7 @@ CARD_ENUM = {
 CARD_TABLE_MOUNTAIN = {
     name = "Mountain",
     occupied = true,
-    spr = spr_card_mountain, -- sprite for the card
+    spr = usprites.spr_card_mountain, -- sprite for the card
     type = CARD_ENUM.MOUNTAIN, -- type of the card, used to place on the grid
     initFunc = function() -- init function for the card, can be used to set up card-specific data
         -- nothing to do here for now
@@ -351,7 +316,7 @@ CARD_TABLE_ROAD = {
 
 CARD_TABLE_MEADOW = {
     name = "Meadow",
-    spr = spr_card_meadow, -- sprite for the card
+    spr = usprites.spr_card_meadow, -- sprite for the card
     type = CARD_ENUM.MEADOW, -- type of the card, used to place on the grid
     occupied = true, -- this tile is occupied
     initFunc = function() -- init function for the card, can be used to set up card-specific data
@@ -409,12 +374,12 @@ obj_tilegrid = createObject(
         gridHeight=8,
         tileGrid = {},
         tileSprites ={
-            [CARD_ENUM.EMPTY] = spr_tile_empty,
-            [CARD_ENUM.ROAD] = spr_tile_road,
-            [CARD_ENUM.ROAD_ENEMIES] = spr_tile_road_enemies,
-            [CARD_ENUM.MOUNTAIN] = spr_tile_mountain,
-            [CARD_ENUM.ROAD_CAMP] = spr_tile_road_camp,
-            [CARD_ENUM.MEADOW] = spr_tile_meadow,
+            [CARD_ENUM.EMPTY] = usprites.spr_tile_empty,
+            [CARD_ENUM.ROAD] = usprites.spr_tile_road,
+            [CARD_ENUM.ROAD_ENEMIES] = usprites.spr_tile_road_enemies,
+            [CARD_ENUM.MOUNTAIN] = usprites.spr_tile_mountain,
+            [CARD_ENUM.ROAD_CAMP] = usprites.spr_tile_road_camp,
+            [CARD_ENUM.MEADOW] = usprites.spr_tile_meadow,
         },
         tileCanvas = Canvas.new(), -- drawing onto canvas for performance
         canvasUpdate = true, -- flag to update canvas when needed
@@ -494,9 +459,9 @@ obj_tilegrid = createObject(
             else
                 -- check if a card is tapped by checking if the stylus is within the card slots
                 for i = 1, obj_tilegrid.vars.maxCards do
-                    local x = 256 / 2 - CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * CARD_WIDTH
-                    local y = SCREEN_HEIGHT - CARD_HEIGHT - 8 -- place cards at the bottom of the screen
-                    if Stylus.X >= x and Stylus.X < x + CARD_WIDTH and Stylus.Y >= y and Stylus.Y < y + CARD_HEIGHT then
+                    local x = 256 / 2 - usprites.CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * usprites.CARD_WIDTH
+                    local y = SCREEN_HEIGHT - usprites.CARD_HEIGHT - 8 -- place cards at the bottom of the screen
+                    if Stylus.X >= x and Stylus.X < x + usprites.CARD_WIDTH and Stylus.Y >= y and Stylus.Y < y + usprites.CARD_HEIGHT then
                         -- select the card if it exists
                         if i <= #obj_tilegrid.vars.heldCards then
                             -- selectedcard is a struct of {cardSlotIndex, cardData}
@@ -561,17 +526,17 @@ obj_tilegrid = createObject(
         -- draw card slots
         -- one card has width of 16 pixels, 256 / 16 = 16 cards can fit in one row
         for i = 1, obj_tilegrid.vars.maxCards do
-            local x = 256 / 2 - CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * CARD_WIDTH
-            local y = SCREEN_HEIGHT - CARD_HEIGHT - 8 -- place cards at the bottom of the screen
+            local x = 256 / 2 - usprites.CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * usprites.CARD_WIDTH
+            local y = SCREEN_HEIGHT - usprites.CARD_HEIGHT - 8 -- place cards at the bottom of the screen
             if i <= #obj_tilegrid.vars.heldCards then
                 -- draw card sprite if it exists
                 local card = obj_tilegrid.vars.heldCards[i]
                 if card then
-                    screen.blit(SCREEN_DOWN, x, y, card.spr, 0, 0, CARD_WIDTH, CARD_HEIGHT) -- draw card sprite
+                    screen.blit(SCREEN_DOWN, x, y, card.spr, 0, 0, usprites.CARD_WIDTH, usprites.CARD_HEIGHT) -- draw card sprite
                 end
             else
                 -- draw empty slot
-                screen.blit(SCREEN_DOWN, x, y, spr_card_empty, 0, 0, CARD_WIDTH, CARD_HEIGHT) -- draw empty card slot
+                screen.blit(SCREEN_DOWN, x, y, usprites.spr_card_empty, 0, 0, usprites.CARD_WIDTH, usprites.CARD_HEIGHT) -- draw empty card slot
             end
         end
 
@@ -582,11 +547,8 @@ obj_tilegrid = createObject(
 obj_tilegrid.init()
 
 -- create hero
-spr_hero = Sprite.new("gameassets/hero.png",16,16, VRAM)
-spr_hero:addAnimation({0,1},300)
-table.insert(sprList, spr_hero) -- add to sprite list
 obj_hero = createObject(
-    spr_hero,
+    usprites.spr_hero,
     {
         currentRoadPathIndex = 1, -- index of the current road path tile
         startingTile = obj_tilegrid.vars.roadPath[1], -- starting tile for the hero
@@ -807,11 +769,5 @@ while not Keys.newPress.Start do
     render()
 end
 -- Free resources
-for i,s in ipairs(sprList) do -- this should theoretically free all images 
-    -- check if it is an Image or a Sprite
-    if s.destroy then
-        s:destroy() -- destroy sprite or image
-    else
-        Image.destroy(s) -- destroy image
-    end
-end
+
+usprites.FreeSprites()
