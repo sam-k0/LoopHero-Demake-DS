@@ -7,13 +7,14 @@
 -- This (the code) is open source, freely editable and free to use without warranty.
 -- Code written by sam-k0
 
-Image = require("Image")
---Debug.ON()
+local Image = require("Image")
+local gamegui = require("modules/gui")
+local umath = require("modules/umath")
+
 --= Global Variables ==========--
 objList = {} -- list of objects
 sprList = {} -- list of sprites
-TARGET_FPS = 30
-SEED = 123456789 -- Seed for random number generator
+
 
 CARD_WIDTH = 16 -- width of a card in pixels
 CARD_HEIGHT = 22 -- height of a card in pixels
@@ -32,48 +33,6 @@ GAMESTATE = {
     PAUSED = GS_PLAYING,
     HEROSTATE = HS_WALKING
 }
-
---= Math Functions ==========--
-
-function Random()
-    -- Constants from Numerical Recipes LCG
-    local seed = SEED
-    seed = (1103515245 * seed + 12345) % 2147483648
-    -- Update the global seed
-    SEED = seed
-    return (seed % 10000) / 10000  -- returns a float between 0.0 and 1.0
-end
-
-function Floor(x)
-    return x - (x % 1)
-end
-
-function RandomRange(min, max)
-    if max == nil then
-        return min
-    end
-    return Floor(Random() * (max - min + 1) + min)
-end
-
-function RandomChoice(t)
-    return t[RandomRange(1, #t)]
-end
-
-function RandomInt(a, b)
-    return a + Floor(Random() * (b - a + 1))
-end
-
-function Clamp(val, min, max)
-    if val < min then return min end
-    if val > max then return max end
-    return val
-end
-
-function Round(num, decimals)
-    local mult = 10^(decimals or 0)
-    return math.floor(num * mult + 0.5) / mult
-end
-
 
 
 function CopyShallow(orig)
@@ -139,7 +98,7 @@ function randomPath()
     end
 
     -- Pick a random starting edge tile
-    local start = edgeTiles[1]--randomChoice(edgeTiles)
+    local start = edgeTiles[1]--umath.RandomChoice(edgeTiles)
     local x, y = start.x, start.y
     table.insert(path, {x = x, y = y})
     mark(x, y)
@@ -152,10 +111,10 @@ function randomPath()
         {dx = 0, dy = -1}
     }
 
-    -- Shuffle helper using randomRange
+    -- Shuffle helper using umath.RandomRange
     local function shuffle(t)
         for i = #t, 2, -1 do
-            local j = RandomRange(1, i)
+            local j = umath.RandomRange(1, i)
             t[i], t[j] = t[j], t[i]
         end
     end
@@ -219,31 +178,6 @@ function getAdjacentTiles(x,y,_type)
 end
 
 
---= Gui functions ==========--
-
-COLOR_GREEN = Color.new(0, 24, 0)   -- softer green
-COLOR_RED = Color.new(24, 0, 0)     -- softer red
-COLOR_BLUE = Color.new(0, 0, 24)    -- softer blue
-COLOR_BLACK = Color.new(4, 4, 4)    -- near-black, not pure black
-COLOR_WHITE = Color.new(31, 31, 31) -- white color
-COLOR_GOLD = Color.new(31, 24, 0) -- gold color
-
-function draw_bar(x,y,w,h,percent,bgColor, color, scrn)
-    -- Draw a bar with a percentage fill
-    local fillWidth = Floor(w * percent)
-    screen.drawFillRect(scrn, x,y,x+w,y+h,bgColor) -- draw background
-    screen.drawFillRect(scrn, x, y, x+fillWidth, y+h, color) -- draw filled part
-end
-
-function draw_bar_text(x,y,w,h,percent,bgColor, color, scrn, text)
-    -- Draw a bar with a percentage fill and text
-    local fillWidth = Floor(w * percent)
-    screen.drawFillRect(scrn, x,y,x+w,y+h,bgColor) -- draw background
-    screen.drawFillRect(scrn, x, y, x+fillWidth,y+h, color) -- draw filled part
-    -- draw text on top of the bar, anchor it to the left side
-    screen.print(scrn, x + 2, y + 2, text, COLOR_WHITE) -- draw text in white color
-
-end
 
 
 --= Enemy stats ==========--
@@ -253,13 +187,13 @@ ENEMY_STRENGTH_MP = 0.95
 
 function ScaleEnemy(_enemy)
     local l = obj_hero.vars.loop
-    _enemy.health = Floor(_enemy.health + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
-    _enemy.attack = Floor(_enemy.attack + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
+    _enemy.health = umath.Floor(_enemy.health + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
+    _enemy.attack = umath.Floor(_enemy.attack + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
 end
 
 
 
-spr_enemy_goblin = Image.load("goblin.png", VRAM) -- load goblin image
+spr_enemy_goblin = Image.load("gameassets/goblin.png", VRAM) -- load goblin image
 table.insert(sprList, spr_enemy_goblin) -- add to sprite list
 E_GOBLIN = {
     name = "Goblin",
@@ -270,11 +204,11 @@ E_GOBLIN = {
     speed = 0.6,
     reward = 8, -- reward for defeating this enemy
     spr = spr_enemy_goblin,
-    attackCooldown = Floor(30/0.6), -- frames to wait before attacking again
-    ATTACKCOOLDOWN = Floor(30/0.6), -- frames to wait before attacking again
+    attackCooldown = umath.Floor(30/0.6), -- frames to wait before attacking again
+    ATTACKCOOLDOWN = umath.Floor(30/0.6), -- frames to wait before attacking again
 }
 
-spr_enemy_slime = Image.load("slime.png", VRAM) -- load slime sprite
+spr_enemy_slime = Image.load("gameassets/slime.png", VRAM) -- load slime sprite
 table.insert(sprList, spr_enemy_slime) -- add to sprite list
 E_SLIME = {
     name = "Slime",
@@ -304,30 +238,30 @@ function createObject(sprAnim,varTable,initFunc, updateFunc, drawFunc ) -- objec
 end
 
 -- create tilegrid manager
-spr_tile_empty = Image.load("tile_empty.png", VRAM) -- load empty tile sprite
+spr_tile_empty = Image.load("gameassets/tile_empty.png", VRAM) -- load empty tile sprite
 table.insert(sprList, spr_tile_empty) -- add to sprite list
 
-spr_tile_road = Image.load("tile_road.png", VRAM) -- load road tile sprite
+spr_tile_road = Image.load("gameassets/tile_road.png", VRAM) -- load road tile sprite
 table.insert(sprList, spr_tile_road) -- add to sprite list
 
-spr_tile_road_camp = Image.load("tile_road_camp.png", VRAM) -- load road tile with camp sprite
+spr_tile_road_camp = Image.load("gameassets/tile_road_camp.png", VRAM) -- load road tile with camp sprite
 table.insert(sprList, spr_tile_road_camp) -- add to sprite list
 
-spr_tile_road_enemies = Image.load("tile_road_enemies.png", VRAM) -- load road tile with enemies sprite
+spr_tile_road_enemies = Image.load("gameassets/tile_road_enemies.png", VRAM) -- load road tile with enemies sprite
 table.insert(sprList, spr_tile_road_enemies) -- add to sprite list
 
-spr_tile_mountain = Image.load("tile_mountain.png", VRAM) -- load mountain tile sprite
+spr_tile_mountain = Image.load("gameassets/tile_mountain.png", VRAM) -- load mountain tile sprite
 table.insert(sprList, spr_tile_mountain) -- add to sprite list
 
-spr_tile_meadow = Image.load("tile_meadow.png", VRAM) -- load meadow tile sprite
+spr_tile_meadow = Image.load("gameassets/tile_meadow.png", VRAM) -- load meadow tile sprite
 table.insert(sprList, spr_tile_meadow) -- add to sprite list
 
 --== Create Card images ==========--
-spr_card_empty = Image.load("card_empty.png", VRAM) -- load empty card sprite
+spr_card_empty = Image.load("gameassets/card_empty.png", VRAM) -- load empty card sprite
 table.insert(sprList, spr_card_empty) -- add to sprite list
-spr_card_mountain = Image.load("card_mountain.png", VRAM) -- load mountain card sprite
+spr_card_mountain = Image.load("gameassets/card_mountain.png", VRAM) -- load mountain card sprite
 table.insert(sprList, spr_card_mountain) -- add to sprite list
-spr_card_meadow = Image.load("card_meadow.png", VRAM) -- load meadow card sprite
+spr_card_meadow = Image.load("gameassets/card_meadow.png", VRAM) -- load meadow card sprite
 table.insert(sprList, spr_card_meadow) -- add to sprite list
 
 CARD_ENUM = {
@@ -393,12 +327,12 @@ CARD_TABLE_ROAD = {
     updateFunc = function(tile)
         tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
         if tile.data.spawnTimer <= 0 then
-            tile.data.spawnTimer = RandomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
-            if Random() < 0.1 then --spawn enemy
+            tile.data.spawnTimer = umath.RandomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
+            if umath.Random() < 0.1 then --spawn enemy
                 if #tile.data.enemies == tile.data.maxEnemies then
                     return false -- don't spawn if max enemies reached
                 end
-                local enemy = CopyShallow(RandomChoice({E_GOBLIN, E_SLIME}))
+                local enemy = CopyShallow(umath.RandomChoice({E_GOBLIN, E_SLIME}))
                 ScaleEnemy(enemy)
                 table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
                 return true -- indicate that the tile was updated
@@ -496,8 +430,8 @@ obj_tilegrid = createObject(
         cardPlaceToGridcoords = function(sx, sy)
             -- calculate grid's left edge as in the draw function
             local grid_left = 256 / 2 - obj_tilegrid.vars.tileSize * obj_tilegrid.vars.gridWidth / 2
-            local x = Floor((sx - grid_left) / obj_tilegrid.vars.tileSize) + 1
-            local y = Floor((sy - obj_tilegrid.vars.y) / obj_tilegrid.vars.tileSize) + 1
+            local x = umath.Floor((sx - grid_left) / obj_tilegrid.vars.tileSize) + 1
+            local y = umath.Floor((sy - obj_tilegrid.vars.y) / obj_tilegrid.vars.tileSize) + 1
             return x, y
         end
     },
@@ -520,7 +454,7 @@ obj_tilegrid = createObject(
                
                 obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD)
                 -- assign random spawn timer for the road tile
-                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = RandomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
+                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = umath.RandomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
                 
                 if idx == 1 then-- check if we are processing the first tile in the path
                     obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD_CAMP)
@@ -648,7 +582,7 @@ obj_tilegrid = createObject(
 obj_tilegrid.init()
 
 -- create hero
-spr_hero = Sprite.new("hero.png",16,16, VRAM)
+spr_hero = Sprite.new("gameassets/hero.png",16,16, VRAM)
 spr_hero:addAnimation({0,1},300)
 table.insert(sprList, spr_hero) -- add to sprite list
 obj_hero = createObject(
@@ -743,7 +677,7 @@ obj_hero = createObject(
                     enemy.attackCooldown = enemy.attackCooldown - 1 -- decrement attack cooldown
                     if enemy.attackCooldown <= 0 then
                         -- attack the hero
-                        obj_hero.vars.health = Round(obj_hero.vars.health - Clamp(enemy.attack - obj_hero.vars.defense, 0, enemy.attack - obj_hero.vars.defense+1),1) -- calculate damage
+                        obj_hero.vars.health = umath.Round(obj_hero.vars.health - umath.Clamp(enemy.attack - obj_hero.vars.defense, 0, enemy.attack - obj_hero.vars.defense+1),1) -- calculate damage
                         if obj_hero.vars.health <= 0 then
                             -- hero defeated, game over state
                             GAMESTATE.PAUSED = GS_GAMEOVER
@@ -759,7 +693,7 @@ obj_hero = createObject(
                     
                     obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
                     local enemy = enemies[1] -- focus the first enemy
-                    enemy.health = enemy.health - Clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
+                    enemy.health = enemy.health - umath.Clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
                     if enemy.health <= 0 then
                         -- enemy defeated, remove from tile
                         obj_hero.vars.xp = obj_hero.vars.xp + enemy.reward -- give XP to the hero
@@ -778,23 +712,23 @@ obj_hero = createObject(
         --obj_hero.sprite:drawFrame(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 0) -- draw the hero sprite at the current position
         obj_hero.sprite:playAnimation(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 1) -- draw the hero sprite at the current position
         -- Draw health bar
-        draw_bar_text(
+        gamegui.draw_bar_text(
                     8,
                     SCREEN_HEIGHT-16,
                     SCREEN_WIDTH/3,
                     10,
                     obj_hero.vars.health / obj_hero.vars.MAXHEALTH,
-                    COLOR_RED, COLOR_GREEN, SCREEN_UP,
+                    gamegui.COLOR_RED, gamegui.COLOR_GREEN, SCREEN_UP,
                     "Hero HP: "..obj_hero.vars.health.."/"..obj_hero.vars.MAXHEALTH) -- draw health bar
 
 
-        draw_bar_text(
+        gamegui.draw_bar_text(
                     SCREEN_WIDTH/2,
                     SCREEN_HEIGHT-16,
                     SCREEN_WIDTH/3,
                     10,
                     obj_hero.vars.xp / obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level),
-                    COLOR_BLUE, COLOR_GOLD, SCREEN_UP,
+                    gamegui.COLOR_BLUE, gamegui.COLOR_GOLD, SCREEN_UP,
                     "XP: "..obj_hero.vars.xp.."/"..obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level).." (Lvl "..obj_hero.vars.level..")"
         )
 
