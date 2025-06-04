@@ -252,8 +252,9 @@ obj_tilegrid = createObject(
                             newtile.initFunc() 
                         end
                         newtile.occupied = true -- mark as occupied
-
-                        obj_tilegrid.vars.heldCards[cardIndex] = nil -- remove the card from the held cards
+                        -- TODO: possible bug
+                        --obj_tilegrid.vars.heldCards[cardIndex] = nil -- remove the card from the held cards
+                        table.remove(obj_tilegrid.vars.heldCards, cardIndex) -- remove the card from the held cards
                         obj_tilegrid.vars.tileGrid[y][x] = newtile -- place the new tile in the grid
                         obj_tilegrid.vars.canvasUpdate = true -- mark canvas for update
                         obj_tilegrid.vars.selectedCard = nil -- deselect card after placing it
@@ -394,10 +395,23 @@ obj_hero = createObject(
             -- heal the hero
             obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- heal the hero to full health
         end,
+        addXP = function(amount) -- add XP to the hero
+            obj_hero.vars.xp = obj_hero.vars.xp + amount -- add XP
+            if obj_hero.vars.xp >= obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level) then
+                obj_hero.vars.levelUp() -- level up if enough XP
+            end
+        end,
         regenerateHealth = function() -- regenerate health
             obj_hero.vars.health = obj_hero.vars.health + obj_hero.vars.regeneration -- regenerate health
             if obj_hero.vars.health > obj_hero.vars.MAXHEALTH then
                 obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- cap health at max health
+            end
+        end,
+        addCardToHand = function(card) -- add card to hand
+            if #obj_tilegrid.vars.heldCards < obj_tilegrid.vars.maxCards then -- check if there is space in hand
+                table.insert(obj_tilegrid.vars.heldCards, card) -- add card to hand
+            else
+                obj_hero.vars.xp = obj_hero.vars.xp + 10 -- give 10 XP as compensation
             end
         end,
 
@@ -465,10 +479,16 @@ obj_hero = createObject(
                     enemy.health = enemy.health - Umath.Clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
                     if enemy.health <= 0 then
                         -- enemy defeated, remove from tile
-                        obj_hero.vars.xp = obj_hero.vars.xp + enemy.reward -- give XP to the hero
-                        if obj_hero.vars.xp >= obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level) then
-                            obj_hero.vars.levelUp() -- level up the hero
+                        obj_hero.vars.addXP(enemy.reward) -- give XP to the hero
+                        -- if random chance higher than 0.5, drop a card
+
+                        local enemyDropTable = Cards.enemyDropTable[enemy.name] -- get the card drop data
+                        if enemyDropTable and Umath.Random() < enemyDropTable.chance then
+                            -- randomly select a card from the drop table
+                            local card = Copy.CopyDeep(Umath.RandomChoice(enemyDropTable.cards)) -- copy the card data
+                            obj_hero.vars.addCardToHand(card) -- add card to hand
                         end
+                        
                         table.remove(enemies, 1) -- remove the first enemy
                        
                     end

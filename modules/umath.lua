@@ -22,6 +22,12 @@ function umath.RandomRange(min, max)
 end
 
 function umath.RandomChoice(t)
+    if #t == 1 then 
+        return t[1]
+    end
+    if #t == 0 then 
+        return nil 
+    end
     return t[umath.RandomRange(1, #t)]
 end
 

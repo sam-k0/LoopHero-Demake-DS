@@ -1,6 +1,7 @@
 
 local Umath = require("modules/Umath")
 local Usprites = require("modules/Usprites")
+--local Cards = require("modules/cards") illegal circular dependency
 
 
 local enemies = {} -- table to hold all enemies
