@@ -8,9 +8,10 @@
 -- Code written by sam-k0
 
 local Image = require("Image")
-local gamegui = require("modules/gui")
-local umath = require("modules/umath")
-local usprites = require("modules/usprites") -- load sprites module
+local Gamegui = require("modules/gui")
+local Umath = require("modules/umath")
+local Usprites = require("modules/usprites") -- load sprites module
+local Enemies = require("modules/enemies") -- load enemies module
 
 --= Global Variables ==========--
 objList = {} -- list of objects
@@ -94,7 +95,7 @@ function randomPath()
     end
 
     -- Pick a random starting edge tile
-    local start = edgeTiles[1]--umath.RandomChoice(edgeTiles)
+    local start = edgeTiles[1]--Umath.RandomChoice(edgeTiles)
     local x, y = start.x, start.y
     table.insert(path, {x = x, y = y})
     mark(x, y)
@@ -107,10 +108,10 @@ function randomPath()
         {dx = 0, dy = -1}
     }
 
-    -- Shuffle helper using umath.RandomRange
+    -- Shuffle helper using Umath.RandomRange
     local function shuffle(t)
         for i = #t, 2, -1 do
-            local j = umath.RandomRange(1, i)
+            local j = Umath.RandomRange(1, i)
             t[i], t[j] = t[j], t[i]
         end
     end
@@ -177,43 +178,14 @@ end
 
 
 --= Enemy stats ==========--
-
 ENEMY_STRENGTH_MP = 0.95 
 -- Final STR = Base STR × Loop Count × (1 + Difficulty Enemy Strength) × (1 + (Loop Count - 1) × Difficulty Enemy Strength Growth)
 
 function ScaleEnemy(_enemy)
     local l = obj_hero.vars.loop
-    _enemy.health = umath.Floor(_enemy.health + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
-    _enemy.attack = umath.Floor(_enemy.attack + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
+    _enemy.health = Umath.Floor(_enemy.health + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
+    _enemy.attack = Umath.Floor(_enemy.attack + l * (1 + ENEMY_STRENGTH_MP) * (1+(l-1) * _enemy.strengthGrowth))
 end
-
-E_GOBLIN = {
-    name = "Goblin",
-    health = 11, 
-    attack = 3.2, 
-    strengthGrowth = 0.01,
-    defense = 0.5,
-    speed = 0.6,
-    reward = 8, -- reward for defeating this enemy
-    spr = usprites.spr_enemy_goblin,
-    attackCooldown = umath.Floor(30/0.6), -- frames to wait before attacking again
-    ATTACKCOOLDOWN = umath.Floor(30/0.6), -- frames to wait before attacking again
-}
-
-E_SLIME = {
-    name = "Slime",
-    health = 12, 
-    attack = 3.3,
-    strengthGrowth = 0.02,
-    defense = 0,
-    speed = 1,
-    reward = 5, -- reward for defeating this enemy
-    spr = usprites.spr_enemy_slime,
-    attackCooldown = 30, -- frames to wait before attacking again
-    ATTACKCOOLDOWN = 30, -- frames to wait before attacking again
-}
-
-
 
 --= Create objects ==========--
 
@@ -242,7 +214,7 @@ CARD_ENUM = {
 CARD_TABLE_MOUNTAIN = {
     name = "Mountain",
     occupied = true,
-    spr = usprites.spr_card_mountain, -- sprite for the card
+    spr = Usprites.spr_card_mountain, -- sprite for the card
     type = CARD_ENUM.MOUNTAIN, -- type of the card, used to place on the grid
     initFunc = function() -- init function for the card, can be used to set up card-specific data
         -- nothing to do here for now
@@ -292,12 +264,12 @@ CARD_TABLE_ROAD = {
     updateFunc = function(tile)
         tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
         if tile.data.spawnTimer <= 0 then
-            tile.data.spawnTimer = umath.RandomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
-            if umath.Random() < 0.1 then --spawn enemy
+            tile.data.spawnTimer = Umath.RandomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
+            if Umath.Random() < 0.1 then --spawn enemy
                 if #tile.data.enemies == tile.data.maxEnemies then
                     return false -- don't spawn if max enemies reached
                 end
-                local enemy = CopyShallow(umath.RandomChoice({E_GOBLIN, E_SLIME}))
+                local enemy = CopyShallow(Umath.RandomChoice({Enemies.E_GOBLIN, Enemies.E_SLIME}))
                 ScaleEnemy(enemy)
                 table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
                 return true -- indicate that the tile was updated
@@ -316,7 +288,7 @@ CARD_TABLE_ROAD = {
 
 CARD_TABLE_MEADOW = {
     name = "Meadow",
-    spr = usprites.spr_card_meadow, -- sprite for the card
+    spr = Usprites.spr_card_meadow, -- sprite for the card
     type = CARD_ENUM.MEADOW, -- type of the card, used to place on the grid
     occupied = true, -- this tile is occupied
     initFunc = function() -- init function for the card, can be used to set up card-specific data
@@ -343,7 +315,6 @@ CARD_TABLE_EMPTY = {
 
 
 function cardTableToTileTable(cardTable)
-
 -- cause data can be empty
     if not cardTable.data then
         cardTable.data = {}
@@ -374,12 +345,12 @@ obj_tilegrid = createObject(
         gridHeight=8,
         tileGrid = {},
         tileSprites ={
-            [CARD_ENUM.EMPTY] = usprites.spr_tile_empty,
-            [CARD_ENUM.ROAD] = usprites.spr_tile_road,
-            [CARD_ENUM.ROAD_ENEMIES] = usprites.spr_tile_road_enemies,
-            [CARD_ENUM.MOUNTAIN] = usprites.spr_tile_mountain,
-            [CARD_ENUM.ROAD_CAMP] = usprites.spr_tile_road_camp,
-            [CARD_ENUM.MEADOW] = usprites.spr_tile_meadow,
+            [CARD_ENUM.EMPTY] = Usprites.spr_tile_empty,
+            [CARD_ENUM.ROAD] = Usprites.spr_tile_road,
+            [CARD_ENUM.ROAD_ENEMIES] = Usprites.spr_tile_road_enemies,
+            [CARD_ENUM.MOUNTAIN] = Usprites.spr_tile_mountain,
+            [CARD_ENUM.ROAD_CAMP] = Usprites.spr_tile_road_camp,
+            [CARD_ENUM.MEADOW] = Usprites.spr_tile_meadow,
         },
         tileCanvas = Canvas.new(), -- drawing onto canvas for performance
         canvasUpdate = true, -- flag to update canvas when needed
@@ -395,8 +366,8 @@ obj_tilegrid = createObject(
         cardPlaceToGridcoords = function(sx, sy)
             -- calculate grid's left edge as in the draw function
             local grid_left = 256 / 2 - obj_tilegrid.vars.tileSize * obj_tilegrid.vars.gridWidth / 2
-            local x = umath.Floor((sx - grid_left) / obj_tilegrid.vars.tileSize) + 1
-            local y = umath.Floor((sy - obj_tilegrid.vars.y) / obj_tilegrid.vars.tileSize) + 1
+            local x = Umath.Floor((sx - grid_left) / obj_tilegrid.vars.tileSize) + 1
+            local y = Umath.Floor((sy - obj_tilegrid.vars.y) / obj_tilegrid.vars.tileSize) + 1
             return x, y
         end
     },
@@ -419,7 +390,7 @@ obj_tilegrid = createObject(
                
                 obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD)
                 -- assign random spawn timer for the road tile
-                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = umath.RandomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
+                obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = Umath.RandomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
                 
                 if idx == 1 then-- check if we are processing the first tile in the path
                     obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD_CAMP)
@@ -459,9 +430,9 @@ obj_tilegrid = createObject(
             else
                 -- check if a card is tapped by checking if the stylus is within the card slots
                 for i = 1, obj_tilegrid.vars.maxCards do
-                    local x = 256 / 2 - usprites.CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * usprites.CARD_WIDTH
-                    local y = SCREEN_HEIGHT - usprites.CARD_HEIGHT - 8 -- place cards at the bottom of the screen
-                    if Stylus.X >= x and Stylus.X < x + usprites.CARD_WIDTH and Stylus.Y >= y and Stylus.Y < y + usprites.CARD_HEIGHT then
+                    local x = 256 / 2 - Usprites.CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * Usprites.CARD_WIDTH
+                    local y = SCREEN_HEIGHT - Usprites.CARD_HEIGHT - 8 -- place cards at the bottom of the screen
+                    if Stylus.X >= x and Stylus.X < x + Usprites.CARD_WIDTH and Stylus.Y >= y and Stylus.Y < y + Usprites.CARD_HEIGHT then
                         -- select the card if it exists
                         if i <= #obj_tilegrid.vars.heldCards then
                             -- selectedcard is a struct of {cardSlotIndex, cardData}
@@ -526,17 +497,17 @@ obj_tilegrid = createObject(
         -- draw card slots
         -- one card has width of 16 pixels, 256 / 16 = 16 cards can fit in one row
         for i = 1, obj_tilegrid.vars.maxCards do
-            local x = 256 / 2 - usprites.CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * usprites.CARD_WIDTH
-            local y = SCREEN_HEIGHT - usprites.CARD_HEIGHT - 8 -- place cards at the bottom of the screen
+            local x = 256 / 2 - Usprites.CARD_WIDTH * obj_tilegrid.vars.maxCards / 2 + (i - 1) * Usprites.CARD_WIDTH
+            local y = SCREEN_HEIGHT - Usprites.CARD_HEIGHT - 8 -- place cards at the bottom of the screen
             if i <= #obj_tilegrid.vars.heldCards then
                 -- draw card sprite if it exists
                 local card = obj_tilegrid.vars.heldCards[i]
                 if card then
-                    screen.blit(SCREEN_DOWN, x, y, card.spr, 0, 0, usprites.CARD_WIDTH, usprites.CARD_HEIGHT) -- draw card sprite
+                    screen.blit(SCREEN_DOWN, x, y, card.spr, 0, 0, Usprites.CARD_WIDTH, Usprites.CARD_HEIGHT) -- draw card sprite
                 end
             else
                 -- draw empty slot
-                screen.blit(SCREEN_DOWN, x, y, usprites.spr_card_empty, 0, 0, usprites.CARD_WIDTH, usprites.CARD_HEIGHT) -- draw empty card slot
+                screen.blit(SCREEN_DOWN, x, y, Usprites.spr_card_empty, 0, 0, Usprites.CARD_WIDTH, Usprites.CARD_HEIGHT) -- draw empty card slot
             end
         end
 
@@ -548,7 +519,7 @@ obj_tilegrid.init()
 
 -- create hero
 obj_hero = createObject(
-    usprites.spr_hero,
+    Usprites.spr_hero,
     {
         currentRoadPathIndex = 1, -- index of the current road path tile
         startingTile = obj_tilegrid.vars.roadPath[1], -- starting tile for the hero
@@ -639,7 +610,7 @@ obj_hero = createObject(
                     enemy.attackCooldown = enemy.attackCooldown - 1 -- decrement attack cooldown
                     if enemy.attackCooldown <= 0 then
                         -- attack the hero
-                        obj_hero.vars.health = umath.Round(obj_hero.vars.health - umath.Clamp(enemy.attack - obj_hero.vars.defense, 0, enemy.attack - obj_hero.vars.defense+1),1) -- calculate damage
+                        obj_hero.vars.health = Umath.Round(obj_hero.vars.health - Umath.Clamp(enemy.attack - obj_hero.vars.defense, 0, enemy.attack - obj_hero.vars.defense+1),1) -- calculate damage
                         if obj_hero.vars.health <= 0 then
                             -- hero defeated, game over state
                             GAMESTATE.PAUSED = GS_GAMEOVER
@@ -655,7 +626,7 @@ obj_hero = createObject(
                     
                     obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
                     local enemy = enemies[1] -- focus the first enemy
-                    enemy.health = enemy.health - umath.Clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
+                    enemy.health = enemy.health - Umath.Clamp(obj_hero.vars.attack - enemy.defense,0,obj_hero.vars.attack - enemy.defense+1) -- calculate damage
                     if enemy.health <= 0 then
                         -- enemy defeated, remove from tile
                         obj_hero.vars.xp = obj_hero.vars.xp + enemy.reward -- give XP to the hero
@@ -674,23 +645,23 @@ obj_hero = createObject(
         --obj_hero.sprite:drawFrame(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 0) -- draw the hero sprite at the current position
         obj_hero.sprite:playAnimation(SCREEN_DOWN, obj_hero.vars.x, obj_hero.vars.y, 1) -- draw the hero sprite at the current position
         -- Draw health bar
-        gamegui.draw_bar_text(
+        Gamegui.draw_bar_text(
                     8,
                     SCREEN_HEIGHT-16,
                     SCREEN_WIDTH/3,
                     10,
                     obj_hero.vars.health / obj_hero.vars.MAXHEALTH,
-                    gamegui.COLOR_RED, gamegui.COLOR_GREEN, SCREEN_UP,
+                    Gamegui.COLOR_RED, Gamegui.COLOR_GREEN, SCREEN_UP,
                     "Hero HP: "..obj_hero.vars.health.."/"..obj_hero.vars.MAXHEALTH) -- draw health bar
 
 
-        gamegui.draw_bar_text(
+        Gamegui.draw_bar_text(
                     SCREEN_WIDTH/2,
                     SCREEN_HEIGHT-16,
                     SCREEN_WIDTH/3,
                     10,
                     obj_hero.vars.xp / obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level),
-                    gamegui.COLOR_BLUE, gamegui.COLOR_GOLD, SCREEN_UP,
+                    Gamegui.COLOR_BLUE, Gamegui.COLOR_GOLD, SCREEN_UP,
                     "XP: "..obj_hero.vars.xp.."/"..obj_hero.vars.calcLevelXPNeeded(obj_hero.vars.level).." (Lvl "..obj_hero.vars.level..")"
         )
 
@@ -770,4 +741,4 @@ while not Keys.newPress.Start do
 end
 -- Free resources
 
-usprites.FreeSprites()
+Usprites.FreeSprites()
