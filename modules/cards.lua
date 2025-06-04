@@ -14,6 +14,7 @@ cards.CARD_ENUM = {
     MEADOW = "meadow",
 }
 
+
 cards.CARD_TABLE_MOUNTAIN = {
     name = "Mountain",
     occupied = true,
@@ -108,6 +109,18 @@ cards.CARD_TABLE_EMPTY = {
     enterFunc = nil,
     updateFunc = nil,
     data = {},
+}
+
+cards.enemyDropTable = 
+{
+    [Enemies.E_GOBLIN.name] = {
+        chance = 0.5,
+        cards = {cards.CARD_TABLE_MOUNTAIN, cards.CARD_TABLE_MEADOW},
+    },
+    [Enemies.E_SLIME.name] = {
+        chance = 0.3,
+        cards = {cards.CARD_TABLE_MEADOW},
+    },
 }
 
 function cards.cardTableToTileTable(cardTable)
