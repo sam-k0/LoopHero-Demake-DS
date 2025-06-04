@@ -12,6 +12,8 @@ local Gamegui = require("modules/gui")
 local Umath = require("modules/umath")
 local Usprites = require("modules/usprites") -- load sprites module
 local Enemies = require("modules/enemies") -- load enemies module
+local Copy = require("modules/copy") -- load copy module
+local Cards = require("modules/cards") -- load cards module
 
 --= Global Variables ==========--
 objList = {} -- list of objects
@@ -31,26 +33,6 @@ GAMESTATE = {
     HEROSTATE = HS_WALKING
 }
 
-
-function CopyShallow(orig)
-    local copy = {}
-    for k, v in pairs(orig) do
-        copy[k] = v
-    end
-    return copy
-end
-
-function CopyDeep(orig)
-    local copy = {}
-    for k, v in pairs(orig) do
-        if type(v) == "table" then
-            copy[k] = CopyDeep(v) -- recursively copy tables
-        else
-            copy[k] = v -- copy value
-        end
-    end
-    return copy
-end
 
 
 --= Grid and path functions ==========--
@@ -201,139 +183,6 @@ end
 
 -- create tilegrid manager
 
-CARD_ENUM = {
-    EMPTY = "empty", -- this is used to index the sprite in the tileSprites table
-    MOUNTAIN = "mountain", -- this is used to index the sprite in the tileSprites table
-    ROAD = "road", -- this is used to index the sprite in the tileSprites table
-    ROAD_CAMP = "road_camp", -- this is used to index the sprite in the tileSprites table
-    ROAD_ENEMIES = "road_enemies", -- this is used to index the sprite in the tileSprites table
-    MEADOW = "meadow", -- this is used to index the sprite in the tileSprites table
-}
-
--- card data table
-CARD_TABLE_MOUNTAIN = {
-    name = "Mountain",
-    occupied = true,
-    spr = Usprites.spr_card_mountain, -- sprite for the card
-    type = CARD_ENUM.MOUNTAIN, -- type of the card, used to place on the grid
-    initFunc = function() -- init function for the card, can be used to set up card-specific data
-        -- nothing to do here for now
-        obj_hero.vars.MAXHEALTH = obj_hero.vars.MAXHEALTH + 10 -- increase hero's max health by 20 when placing a mountain
-    end,
-    removeFunc = function() -- remove function for the card, can be used to clean up card-specific data
-        -- nothing to do here for now
-    end,
-    enterFunc = nil, -- function to call when hero enters the tile with this card
-    updateFunc = nil,    
-    data = {},
-}
-
-CARD_TABLE_ROAD_CAMP = {
-    name = "Road Camp",
-    spr = nil, -- sprite for the card
-    occupied = true,
-    type = CARD_ENUM.ROAD_CAMP, -- type of the card, used to place on the grid
-    initFunc = nil,
-    removeFunc = nil, -- if removeFunc is nil, the tile cannot be removed
-    enterFunc = function() -- function to call when hero enters the tile with this card
-        obj_hero.vars.health = obj_hero.vars.health + obj_hero.vars.MAXHEALTH * 0.1 -- heal the hero by 10% of max health
-        if obj_hero.vars.health > obj_hero.vars.MAXHEALTH then
-            obj_hero.vars.health = obj_hero.vars.MAXHEALTH -- cap health at max health
-        end
-        obj_hero.vars.loop = obj_hero.vars.loop + 1
-        screen.print(SCREEN_UP, 64, 64, "You found a camp! Resting...")
-    end,
-    updateFunc = nil,
-    data = {},
-}
-
-CARD_TABLE_ROAD = {
-    name = "Road",
-    spr = nil,
-    type = CARD_ENUM.ROAD, -- type of the card, used to place on the grid
-    initFunc = nil,
-    removeFunc = nil,
-    enterFunc = function(tile)
-    if #tile.data.enemies > 0 then
-        -- start fighting state, reset attack cooldown each combat
-        GAMESTATE.HEROSTATE = HS_FIGHTING
-        obj_hero.vars.attackCooldown = obj_hero.vars.ATTACKCOOLDOWN -- reset attack cooldown
-    end
-
-    end,   
-    updateFunc = function(tile)
-        tile.data.spawnTimer = tile.data.spawnTimer - 1 -- decrement spawn timer
-        if tile.data.spawnTimer <= 0 then
-            tile.data.spawnTimer = Umath.RandomRange(tile.data.minSpawnTimer, tile.data.maxSpawnTimer) -- reset spawn timer to a random value between 30 and 120 frames
-            if Umath.Random() < 0.1 then --spawn enemy
-                if #tile.data.enemies == tile.data.maxEnemies then
-                    return false -- don't spawn if max enemies reached
-                end
-                local enemy = CopyShallow(Umath.RandomChoice({Enemies.E_GOBLIN, Enemies.E_SLIME}))
-                ScaleEnemy(enemy)
-                table.insert(tile.data.enemies, enemy) -- add to the tile's enemies list
-                return true -- indicate that the tile was updated
-            end
-        end
-        return false -- no update needed
-    end,
-    data = {
-        enemies = {}, -- list of enemies on this tile
-        spawnTimer = 0, -- timer for spawning enemies or events
-        minSpawnTimer = 120, -- minimum spawn timer
-        maxSpawnTimer = 300, -- maximum spawn timer
-        maxEnemies = 3, -- maximum number of enemies that can spawn on this tile
-    }
-}
-
-CARD_TABLE_MEADOW = {
-    name = "Meadow",
-    spr = Usprites.spr_card_meadow, -- sprite for the card
-    type = CARD_ENUM.MEADOW, -- type of the card, used to place on the grid
-    occupied = true, -- this tile is occupied
-    initFunc = function() -- init function for the card, can be used to set up card-specific data
-        obj_hero.vars.regeneration = obj_hero.vars.regeneration + 0.5 
-    end,
-    removeFunc = nil, -- remove function for the card, can be used to clean up card-specific data
-    enterFunc = nil, -- function to call when hero enters the tile with this card
-    updateFunc = nil,
-    data = {},
-}
-
-CARD_TABLE_EMPTY = {
-    name = "Empty",
-    spr = nil, 
-    type = CARD_ENUM.EMPTY, -- type of the card, used to place on the grid
-    occupied = false, -- this tile is not occupied
-    initFunc = nil, -- init function for the tile
-    removeFunc = nil, -- remove function for the tile
-    enterFunc = nil, -- function to call when hero enters the tile
-    updateFunc = nil, -- update function for the tile
-    data = {}, -- empty data table, no specific data for this tile
-}
-
-
-
-function cardTableToTileTable(cardTable)
--- cause data can be empty
-    if not cardTable.data then
-        cardTable.data = {}
-    end
-
-    return {
-        name = cardTable.name,
-        occupied = cardTable.occupied,
-        spr = obj_tilegrid.vars.tileSprites[cardTable.type], -- use the tile sprite from the tileSprites table
-        type = cardTable.type, -- type of the tile, used to place on the grid
-        initFunc = cardTable.initFunc, -- init function for the tile
-        removeFunc = cardTable.removeFunc, -- remove function for the tile
-        enterFunc = cardTable.enterFunc, -- function to call when hero enters the tile
-        updateFunc = cardTable.updateFunc, -- update function for the tile
-        data = CopyDeep(cardTable.data) or {}, -- {} is used to initialize data if not provided
-    }
-end
-
-
 
 obj_tilegrid = createObject(
     nil, -- no sprite
@@ -345,12 +194,12 @@ obj_tilegrid = createObject(
         gridHeight=8,
         tileGrid = {},
         tileSprites ={
-            [CARD_ENUM.EMPTY] = Usprites.spr_tile_empty,
-            [CARD_ENUM.ROAD] = Usprites.spr_tile_road,
-            [CARD_ENUM.ROAD_ENEMIES] = Usprites.spr_tile_road_enemies,
-            [CARD_ENUM.MOUNTAIN] = Usprites.spr_tile_mountain,
-            [CARD_ENUM.ROAD_CAMP] = Usprites.spr_tile_road_camp,
-            [CARD_ENUM.MEADOW] = Usprites.spr_tile_meadow,
+            [Cards.CARD_ENUM.EMPTY] = Usprites.spr_tile_empty,
+            [Cards.CARD_ENUM.ROAD] = Usprites.spr_tile_road,
+            [Cards.CARD_ENUM.ROAD_ENEMIES] = Usprites.spr_tile_road_enemies,
+            [Cards.CARD_ENUM.MOUNTAIN] = Usprites.spr_tile_mountain,
+            [Cards.CARD_ENUM.ROAD_CAMP] = Usprites.spr_tile_road_camp,
+            [Cards.CARD_ENUM.MEADOW] = Usprites.spr_tile_meadow,
         },
         tileCanvas = Canvas.new(), -- drawing onto canvas for performance
         canvasUpdate = true, -- flag to update canvas when needed
@@ -358,9 +207,9 @@ obj_tilegrid = createObject(
         stylusWasHeld = false, -- flag to check if stylus was held in the last frame
         selectedCard = nil, -- currently selected card for placement
         heldCards = {
-            CopyDeep(CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
-            CopyDeep(CARD_TABLE_MOUNTAIN), -- duplicate for testing, can be removed later
-            CopyDeep(CARD_TABLE_MEADOW), -- initial cards held by the player, can be expanded with more cards
+            Copy.CopyDeep(Cards.CARD_TABLE_MOUNTAIN), -- initial cards held by the player, can be expanded with more cards
+            Copy.CopyDeep(Cards.CARD_TABLE_MOUNTAIN), -- duplicate for testing, can be removed later
+            Copy.CopyDeep(Cards.CARD_TABLE_MEADOW), -- initial cards held by the player, can be expanded with more cards
         }, -- cards held by the player, for placing on the grid
         maxCards = 16, -- maximum number of cards that can be held
         cardPlaceToGridcoords = function(sx, sy)
@@ -377,7 +226,7 @@ obj_tilegrid = createObject(
         for j = 1, obj_tilegrid.vars.gridHeight do
             obj_tilegrid.vars.tileGrid[j] = {}
             for i = 1, obj_tilegrid.vars.gridWidth do
-                obj_tilegrid.vars.tileGrid[j][i] = cardTableToTileTable(CARD_TABLE_EMPTY) -- initialize each tile with empty tile data 
+                obj_tilegrid.vars.tileGrid[j][i] = Cards.cardTableToTileTable(Cards.CARD_TABLE_EMPTY) -- initialize each tile with empty tile data 
             end
         end
         -- make a connected looping road path
@@ -388,12 +237,12 @@ obj_tilegrid = createObject(
             if inBounds(x, y, obj_tilegrid.vars.gridWidth, obj_tilegrid.vars.gridHeight) then -- assign road tile changes
                 table.insert(obj_tilegrid.vars.roadPath, {x = x, y = y})
                
-                obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD)
+                obj_tilegrid.vars.tileGrid[y][x] = Cards.cardTableToTileTable(Cards.CARD_TABLE_ROAD)
                 -- assign random spawn timer for the road tile
                 obj_tilegrid.vars.tileGrid[y][x].data.spawnTimer = Umath.RandomRange(obj_tilegrid.vars.tileGrid[y][x].data.minSpawnTimer, obj_tilegrid.vars.tileGrid[y][x].data.maxSpawnTimer) -- set initial spawn timer
                 
                 if idx == 1 then-- check if we are processing the first tile in the path
-                    obj_tilegrid.vars.tileGrid[y][x] = cardTableToTileTable(CARD_TABLE_ROAD_CAMP)
+                    obj_tilegrid.vars.tileGrid[y][x] = Cards.cardTableToTileTable(Cards.CARD_TABLE_ROAD_CAMP)
                 end
             end
         end
@@ -410,7 +259,7 @@ obj_tilegrid = createObject(
                     if tile.occupied == false then -- if tile is not occupied
                         local cardIndex = obj_tilegrid.vars.selectedCard.cardSlotIndex -- get the index of the selected card
                         local cardData = obj_tilegrid.vars.selectedCard.cardData -- get the card data
-                        local newtile = cardTableToTileTable(cardData)
+                        local newtile = Cards.cardTableToTileTable(cardData)
                         if newtile.initFunc then
                             newtile.initFunc() 
                         end
